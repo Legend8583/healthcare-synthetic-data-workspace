@@ -446,44 +446,37 @@ def build_release_readiness_verdicts(
 
 def render_release_readiness_verdicts(verdicts: list[dict[str, str]]) -> None:
     """Render the release readiness verdict cards."""
-    cards_html = ""
+    import html as _html
+    cards = []
     for v in verdicts:
         if v["status"] == "Good":
-            border_color = "var(--good)"
-            badge_bg = "var(--good-bg)"
-            badge_color = "var(--good)"
+            border_color = "#2E7040"; badge_bg = "#EDF9F3"; badge_color = "#136B48"
         elif v["status"] == "Warn":
-            border_color = "var(--warn)"
-            badge_bg = "var(--warn-bg)"
-            badge_color = "var(--warn)"
+            border_color = "#D68A00"; badge_bg = "#FFF6E3"; badge_color = "#9C6A17"
         else:
-            border_color = "var(--danger)"
-            badge_bg = "var(--danger-bg)"
-            badge_color = "var(--danger)"
+            border_color = "#C62828"; badge_bg = "#FFF1F3"; badge_color = "#9D2B3C"
 
-        cards_html += f"""
-        <div style="background:var(--surface);border:1px solid var(--line);border-top:3px solid {border_color};
-            border-radius:16px;padding:0.85rem 0.9rem;box-shadow:var(--shadow);">
-            <div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
-                color:var(--muted);margin-bottom:0.35rem;">{v['label']}</div>
-            <div style="display:inline-block;padding:0.22rem 0.6rem;border-radius:999px;font-size:0.8rem;
-                font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border_color}22;
-                margin-bottom:0.3rem;">{v['verdict']}</div>
-            <div style="font-size:0.82rem;color:var(--muted);line-height:1.45;">{v['detail']}</div>
-        </div>
-        """
+        label = _html.escape(v["label"])
+        verdict = _html.escape(v["verdict"])
+        detail = _html.escape(v["detail"])
 
-    st.markdown(
-        f"""
-        <div class="action-shell">
-            <h4>Synthetic package verification summary</h4>
-            <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0.7rem;margin-top:0.7rem;">
-                {cards_html}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        cards.append(
+            f'<div style="background:#FFFFFF;border:1px solid #DDE5ED;border-top:3px solid {border_color};'
+            f'border-radius:16px;padding:0.85rem 0.9rem;box-shadow:0 10px 24px rgba(8,70,125,0.08);">'
+            f'<div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.35rem;">{label}</div>'
+            f'<div style="display:inline-block;padding:0.22rem 0.6rem;border-radius:999px;font-size:0.8rem;font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border_color}33;margin-bottom:0.3rem;">{verdict}</div>'
+            f'<div style="font-size:0.82rem;color:#668097;line-height:1.45;">{detail}</div>'
+            f'</div>'
+        )
+
+    html_out = (
+        '<div class="action-shell">'
+        '<h4>Synthetic package verification summary</h4>'
+        '<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0.7rem;margin-top:0.7rem;">'
+        + "".join(cards)
+        + '</div></div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Agent-Enhanced Audit Events ───────────────────────────────────────────────
@@ -1092,25 +1085,25 @@ def build_stakeholder_interpretations(
 
 def render_stakeholder_interpretations(interpretations: list[dict[str, str]]) -> None:
     """Render stakeholder interpretation cards."""
-    cards_html = ""
+    import html as _html
+    cards = []
     for interp in interpretations:
-        cards_html += f"""
-        <div style="background:var(--surface);border:1px solid var(--line);border-radius:16px;
-            padding:0.85rem 0.95rem;box-shadow:var(--shadow);">
-            <div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
-                color:var(--brand);margin-bottom:0.2rem;">{interp['role']}</div>
-            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.4rem;">{interp['focus']}</div>
-            <div style="font-size:0.86rem;color:var(--text);line-height:1.5;">{interp['text']}</div>
-        </div>
-        """
-    st.markdown(
-        f"""
-        <div class="action-shell">
-            <h4>Stakeholder interpretation</h4>
-            <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0.7rem;margin-top:0.6rem;">
-                {cards_html}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        role = _html.escape(interp["role"])
+        focus = _html.escape(interp["focus"])
+        text = _html.escape(interp["text"])
+        cards.append(
+            f'<div style="background:#FFFFFF;border:1px solid #DDE5ED;border-radius:16px;padding:0.85rem 0.95rem;box-shadow:0 10px 24px rgba(8,70,125,0.08);">'
+            f'<div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#004B8B;margin-bottom:0.2rem;">{role}</div>'
+            f'<div style="font-size:0.78rem;color:#668097;margin-bottom:0.4rem;">{focus}</div>'
+            f'<div style="font-size:0.86rem;color:#2D3E50;line-height:1.5;">{text}</div>'
+            f'</div>'
+        )
+
+    html_out = (
+        '<div class="action-shell">'
+        '<h4>Stakeholder interpretation</h4>'
+        '<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0.7rem;margin-top:0.6rem;">'
+        + "".join(cards)
+        + '</div></div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)

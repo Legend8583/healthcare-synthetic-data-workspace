@@ -1,14 +1,20 @@
+"""Release Readiness Briefing — verdict-first summary for the governed workflow.
+
+Generates release-aware briefings aligned with the agent's readiness engine.
+Replaces the earlier analysis-readiness framing with governance verdicts.
+"""
+
 from __future__ import annotations
 
 from typing import Any
 
 
-def _readiness_label(score: float) -> str:
-    if score >= 85:
-        return "High analysis readiness"
-    if score >= 70:
-        return "Promising analysis readiness"
-    return "Needs one more iteration"
+def _release_verdict(score: float) -> str:
+    if score >= 75:
+        return "Ready for internal modeling sandbox"
+    if score >= 60:
+        return "Usable with review"
+    return "Release hold pending additional iteration"
 
 
 def build_readiness_briefing(
@@ -20,70 +26,65 @@ def build_readiness_briefing(
 ) -> dict[str, Any]:
     included_columns = [item for item in metadata if item["include"]]
     top_fidelity_columns = validation["fidelity_table"].head(5)["column"].tolist()
-    top_fidelity_text = ", ".join(top_fidelity_columns) if top_fidelity_columns else "the included columns"
-    readiness_label = _readiness_label(validation["overall_score"])
+    top_fidelity_text = ", ".join(top_fidelity_columns) if top_fidelity_columns else "the included fields"
+    verdict = _release_verdict(validation["overall_score"])
 
     executive_summary = (
-        f"{readiness_label}: the app converted {profile['summary']['rows']} source rows into "
-        f"{generation_summary['rows_generated']} synthetic rows while keeping the process transparent and measurable. "
-        f"The current evidence suggests the dataset is suitable for downstream analysis tasks such as dashboard prototyping, "
-        f"workflow simulation, and vendor sandbox testing, with strongest fidelity in {top_fidelity_text}."
+        f"Release verdict: {verdict}. The agent transformed {profile['summary']['rows']} source records into "
+        f"{generation_summary['rows_generated']} synthetic records under a metadata-only governance boundary. "
+        f"Strongest fidelity in {top_fidelity_text}. Suitable for workflow modeling, capacity analysis, and sandbox testing. "
+        f"Not for clinical decision making."
     )
 
     proof_points = [
         {
-            "title": "Transparent transformation",
-            "body": "Teams can see the full chain from source data to editable metadata to synthetic output to validation, rather than a black-box generator.",
+            "title": "Metadata-only transformation confirmed",
+            "body": "The agent extracted a statistical blueprint from source and generated synthetic records from the approved metadata. No source records were copied into the output.",
         },
         {
-            "title": "Controllable risk posture",
-            "body": "Metadata inclusion, generation strategies, and the privacy-vs-fidelity slider make the tradeoff explicit instead of hidden.",
+            "title": "Governed review boundary",
+            "body": "Field-level handling actions, inclusion decisions, and generation assumptions were all subject to governance review before synthesis was unlocked.",
         },
         {
-            "title": "Measured utility",
-            "body": f"The current run scored {validation['fidelity_score']}/100 on fidelity and {validation['privacy_score']}/100 on privacy, giving an overall score of {validation['overall_score']}/100.",
+            "title": "Verdict-based release readiness",
+            "body": f"Fidelity verdict: {verdict}. Schema preservation and privacy boundaries were verified before the package was cleared for controlled use.",
         },
     ]
 
     use_cases = [
         {
-            "name": "Operational dashboard prototyping",
-            "why_it_works": "Analysts can test wait-time, CTAS, admission, and disposition dashboards without using live patient records.",
-            "example": "Build and QA an emergency department throughput dashboard before connecting to production data.",
+            "name": "Workflow and operational modeling",
+            "why_it_works": "Synthetic records preserve encounter structure and operational timing fields for throughput and flow analysis.",
+            "example": "Simulate baseline ED flow and compare against scenarios with reduced extreme wait times.",
         },
         {
-            "name": "Workflow and patient-flow analysis",
-            "why_it_works": "The schema preserves encounter structure and operational timing fields, which is enough for queueing and flow experiments.",
-            "example": "Compare baseline ED flow with a scenario where extreme wait times are reduced.",
+            "name": "Analytics pipeline development",
+            "why_it_works": "The schema and key operational fields remain usable for feature engineering and cohort logic development.",
+            "example": "Test revisit or admission predictors in a non-production environment before requesting sensitive data access.",
         },
         {
-            "name": "Vendor or sandbox environments",
-            "why_it_works": "Teams can share realistic healthcare-shaped data with lower re-identification risk than raw source data.",
-            "example": "Demo an ED analytics product to hospital stakeholders or external partners.",
+            "name": "Vendor sandbox and integration testing",
+            "why_it_works": "Realistic healthcare-shaped data can exercise file layouts, API contracts, and workflows without releasing direct identifiers.",
+            "example": "Exercise an ED analytics product end-to-end using synthetic output instead of live patient records.",
         },
         {
-            "name": "Analytics and model prototyping",
-            "why_it_works": "Data scientists can test feature pipelines, cohort logic, and notebook workflows before requesting sensitive data access.",
-            "example": "Prototype predictors for revisit risk or admission likelihood using a non-production dataset.",
-        },
-        {
-            "name": "Training and implementation development",
-            "why_it_works": "Developers and clinical informatics teams can practice with realistic fields, missingness, and outlier patterns.",
-            "example": "Let implementation teams build and validate an ED operations app in a safe starting environment.",
+            "name": "Training and workflow rehearsal",
+            "why_it_works": "Teams can rehearse handoffs, reviews, and reporting using realistic but de-identified examples.",
+            "example": "Run implementation training using synthetic data that mirrors real operational patterns.",
         },
     ]
 
     talk_track = [
-        "This workflow does not rely on a hidden generator. It exposes each step from raw schema to metadata rules to validation.",
-        "The output is useful because it preserves analysis-ready structure and broad operational patterns without reusing direct identifiers.",
-        "This means hospitals can prototype dashboards, analytics, vendor integrations, and training workflows earlier and more safely.",
-        "It is not a substitute for clinical decision-making data, but it is a strong sandbox for building, testing, and learning.",
+        "This is a governed transformation pipeline. The agent orchestrates every step from source schema to metadata blueprint to synthetic output.",
+        "Every field-level handling decision is reviewable. Metadata-only transformation is the governance boundary.",
+        "The output is suitable for workflow modeling, analytics sandboxing, and vendor integration. It is not for clinical decision making.",
+        "Release recommendations are verdict-based and tied to explicit reason codes rather than opaque scores.",
     ]
 
     next_actions = [
-        "Tune low-scoring columns in the metadata editor, then rerun generation.",
-        "Expand the sample to more departments or time periods for broader synthetic coverage.",
-        "Add stricter privacy tests if the project moves toward broader operational use.",
+        "Review weaker column verdicts in the metadata review artifact and adjust handling actions if needed.",
+        "Expand source scope to additional departments or longer time ranges for broader synthetic coverage.",
+        "Tighten privacy posture if the package will support broader operational distribution.",
     ]
 
     return {
@@ -92,7 +93,7 @@ def build_readiness_briefing(
         "use_cases": use_cases,
         "talk_track": talk_track,
         "next_actions": next_actions,
-        "readiness_label": readiness_label,
+        "release_verdict": verdict,
         "included_columns": len(included_columns),
         "high_issues": hygiene["severity_counts"]["High"],
     }

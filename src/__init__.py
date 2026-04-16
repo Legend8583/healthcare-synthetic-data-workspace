@@ -1,2 +1,1 @@
-"""Core modules for the Healthcare Synthetic Data Copilot demo."""
-
+"""Core modules for the Southlake Health Agentic Synthetic Data Workspace."""

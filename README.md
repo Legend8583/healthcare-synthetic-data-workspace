@@ -1,81 +1,98 @@
-# Healthcare Synthetic Data Copilot
+# Southlake Health — Agentic Synthetic Data Workspace
 
-Healthcare Synthetic Data Copilot is a compact Streamlit app for a public healthcare synthetic-data workflow. It walks teams through a transparent six-step process:
+A governed, metadata-driven workflow for synthetic healthcare data creation, review, and release readiness.
 
-1. Upload & Learn
-2. Data Hygiene Review
-3. Metadata Controls
-4. Generate Synthetic Data
-5. Validate Fidelity
-6. Analysis Readiness & Downstream Use Cases
+## What It Is
 
-The app is intentionally heuristic and easy to edit. It is designed for education, prototyping, and architectural clarity rather than production-grade differential privacy.
+This is a governed workflow platform for producing synthetic healthcare data under explicit control. The workflow agent orchestrates every step from source ingestion to controlled release. Metadata-only transformation is the boundary: source records are never copied into synthetic output.
+
+The product is designed for internal modeling sandbox use, vendor integration testing, analytics pipeline development, and workflow rehearsal. It is not for clinical decision making.
+
+## Governed Workflow
+
+The agent guides each request through six controlled stages:
+
+1. **Upload Data** — Source CSV is profiled into a statistical metadata blueprint
+2. **Scan Data** — Agent classifies hygiene findings as blockers, warnings, or informational
+3. **Review Data Settings** — Analyst reviews extracted metadata and confirms handling actions
+4. **Submit for Review** — Metadata package is submitted for governance approval
+5. **Generate Synthetic Data** — Approved metadata drives synthetic record generation
+6. **Download & Share Results** — Release readiness is verdict-based, with stakeholder interpretations
+
+Each stage is audit-logged. Every decision has a reason code. The agent visibly controls when the workflow advances or holds.
+
+## What Makes It Agentic
+
+The workflow agent is not a side chatbot. It is the operating logic of the workspace.
+
+- **Readiness Engine** — Computes blocked / review-ready / release-ready status from actual conditions
+- **Decision Log** — Every action is reason-coded (HYG-01, META-03, GOV-01, FID-03, REL-01)
+- **Metadata Lineage** — Visual chain from source to extracted metadata to adjusted metadata to synthetic output to verified release
+- **Hygiene Classification** — Findings are classified as blockers, warnings, or informational and actually affect readiness
+- **Release Verdicts** — Verdict-first summaries replace opaque percentage scores
+- **Stakeholder Interpretation** — Concise readings for Operations Manager, Clinical Analyst, and Compliance Officer
+
+## Governance Boundaries
+
+- Metadata-only transformation (GOV-01): source records are never copied into synthetic output
+- All field-level handling actions are reviewable before generation
+- Governance sign-off required before synthesis is unlocked
+- Audit trail preserved across every workflow state change
+- Output suitable for internal modeling sandbox use only (REL-03: not for clinical decision making)
 
 ## Repo Structure
 
-```text
-.
-├── app.py
+```
+├── app.py                          Main Streamlit app with full governed workflow
 ├── requirements.txt
-├── README.md
-├── sample_data.csv
+├── sample_data.csv                 28 synthetic ED records for demo
+├── sample_data_large.csv           Extended demo dataset
+├── JUDGE_METHOD_EXPLAINER.md       Algorithmic methodology for judge review
 └── src
-    ├── __init__.py
-    ├── explainer.py
-    ├── generator.py
-    ├── hygiene_advisor.py
-    ├── metadata_builder.py
-    ├── profiler.py
-    └── validator.py
+    ├── profiler.py                 Source data profiling and semantic role inference
+    ├── hygiene_advisor.py          Hygiene scan and severity classification
+    ├── cleaner.py                  Targeted hygiene correction actions
+    ├── metadata_builder.py         Metadata blueprint extraction
+    ├── generator.py                Synthetic data generation engine
+    ├── validator.py                Fidelity and privacy validation
+    ├── explainer.py                Release readiness briefing
+    ├── chat_assistant.py           Workflow agent with Claude API integration
+    └── agent_orchestrator.py       Agent readiness engine, decision log, lineage, verdicts
 ```
 
-## What The Demo Shows
+## Running Locally
 
-- A bundled emergency-room style CSV that loads automatically for first-run use
-- Transparent transformation from source data to editable metadata to synthetic output
-- Data hygiene concerns such as missingness, identifiers, and extreme wait-time outliers
-- Metadata controls with a privacy-vs-fidelity slider and a wait-time scenario adjustment
-- Lightweight fidelity and privacy checks for downstream decision support
-- A final step that explains why the synthetic dataset is useful for further analysis
-- An optional in-app AI chatbox powered by the OpenAI API when `OPENAI_API_KEY` is configured
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-## Local Run
+A demo dataset loads automatically on first use. The workspace supports two roles:
 
-1. Create and activate a virtual environment:
+- **Data Analyst** — Uploads data, reviews scan findings, finalizes settings, submits requests, downloads results
+- **Manager / Reviewer** — Approves or rejects submitted requests and reviews final output
 
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+Demo credential for both roles: `test`
 
-2. Install dependencies:
+## Workflow Agent Configuration
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+The workflow agent supports Claude API for richer conversational guidance. To enable:
 
-3. Optional: enable the in-app AI copilot chat:
+```bash
+export ANTHROPIC_API_KEY="your-key"
+```
 
-   ```bash
-   export OPENAI_API_KEY="your_api_key_here"
-   ```
+Without an API key, the agent runs in structured local mode with deterministic responses about workflow state, governance, and release readiness.
 
-4. Start the app:
+## Intended Use
 
-   ```bash
-   streamlit run app.py
-   ```
+Suitable for:
+- Internal operational modeling sandbox
+- Workflow rehearsal and training
+- Analytics pipeline development
+- Vendor sandbox and integration testing
 
-5. Open the local URL that Streamlit prints in your terminal.
-
-The bundled sample data lives at `sample_data.csv`, so you can launch the app immediately without preparing your own file.
-
-## Editing Guide
-
-- Update `src/profiler.py` to change schema discovery and dataset profiling behavior.
-- Update `src/hygiene_advisor.py` to tune quality heuristics and recommendations.
-- Update `src/metadata_builder.py` to change default field strategies or exposed metadata controls.
-- Update `src/generator.py` to adjust the synthetic sampling logic.
-- Update `src/validator.py` to tighten fidelity or privacy checks.
-- Update `src/explainer.py` to change the analysis-readiness summary and downstream use-case framing.
-- Update `src/chat_assistant.py` to change the in-app AI copilot behavior or OpenAI prompt.
+Not suitable for:
+- Clinical decision making
+- Direct patient care applications
+- Release outside of approved governance controls

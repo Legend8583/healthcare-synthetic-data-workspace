@@ -19,8 +19,24 @@ from src.hygiene_advisor import review_hygiene
 from src.metadata_builder import build_metadata, editor_frame_to_metadata, metadata_to_editor_frame
 from src.profiler import profile_dataframe
 from src.validator import validate_synthetic_data
+from src.agent_orchestrator import (
+    render_agent_orchestration_panel,
+    render_agent_timeline,
+    render_metadata_lineage,
+    build_release_readiness_verdicts,
+    render_release_readiness_verdicts,
+    agent_event_label,
+    compute_agent_readiness,
+    render_agent_readiness_panel,
+    classify_hygiene_issues,
+    render_classified_hygiene,
+    build_metadata_review_artifact,
+    render_metadata_review_artifact,
+    build_stakeholder_interpretations,
+    render_stakeholder_interpretations,
+)
 
-APP_TITLE = "Southlake Health Synthetic Data Workspace"
+APP_TITLE = "Southlake Health — Agentic Synthetic Data Workspace"
 SAMPLE_DATA_PATH = Path(__file__).parent / "sample_data.csv"
 LOGO_PATH = Path(__file__).parent / "SL_SouthlakeHealth-logo-rgb.png"
 
@@ -1767,7 +1783,7 @@ def record_audit_event(event: str, detail: str, status: str = "Logged") -> None:
         {
             "time": format_timestamp(),
             "actor": st.session_state.get("current_role", "System"),
-            "event": event,
+            "event": agent_event_label(event),
             "detail": detail,
             "status": status,
         },
@@ -3098,10 +3114,10 @@ def build_distribution_comparison(metadata: list[dict[str, Any]], column_name: s
 
 
 def build_use_case_rows(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[dict[str, str]]:
-    dashboard = {item["label"]: item["value"] for item in build_validation_dashboard(metadata, controls)}
+    indicators = {item["label"]: item["value"] for item in build_validation_dashboard(metadata, controls)}
     overall = st.session_state.validation["overall_score"]
     privacy = st.session_state.validation["privacy_score"]
-    utility = dashboard.get("Downstream utility", 0.0)
+    utility = indicators.get("Sandbox suitability", 0.0)
     fidelity = st.session_state.validation["fidelity_score"]
     wait_fields_present = any("wait" in item["column"].lower() and item["include"] for item in metadata)
 
@@ -3110,10 +3126,10 @@ def build_use_case_rows(metadata: list[dict[str, Any]], controls: dict[str, Any]
 
     return [
         {
-            "Use case": "Operations dashboard prototyping",
+            "Use case": "Operational workflow modeling",
             "Fit": status("Ready" if overall >= 75 else "Review"),
-            "Why": "Key operational fields remain aligned enough to prototype service-line dashboards without moving raw encounter rows.",
-            "Guardrail": "Use synthetic output only; do not back-infer individual patient events.",
+            "Why": "Key operational fields remain aligned enough to model service-line workflows without moving raw encounter rows.",
+            "Guardrail": "Use synthetic output only. Do not back-infer individual patient events.",
         },
         {
             "Use case": "Patient-flow scenario analysis",
@@ -3125,13 +3141,13 @@ def build_use_case_rows(metadata: list[dict[str, Any]], controls: dict[str, Any]
             "Use case": "Analytics pipeline development",
             "Fit": status("Ready" if utility >= 75 else "Review"),
             "Why": "Analysts can test joins, cohort logic, feature engineering, and notebooks before requesting sensitive data access.",
-            "Guardrail": "Re-run validation after metadata changes before sharing derived work.",
+            "Guardrail": "Re-run verification after metadata changes before sharing derived work.",
         },
         {
             "Use case": "Vendor sandbox or integration testing",
             "Fit": status("Ready" if privacy >= 85 else "Review"),
             "Why": "Synthetic records can exercise file layouts, API contracts, and workflows without releasing direct identifiers.",
-            "Guardrail": "Share only the generated synthetic output and keep the validation report attached.",
+            "Guardrail": "Share only the generated synthetic output and keep the release readiness report attached.",
         },
         {
             "Use case": "Training and workflow rehearsal",
@@ -3172,7 +3188,7 @@ def build_validation_dashboard(metadata: list[dict[str, Any]], controls: dict[st
     )
     return [
         {
-            "label": "Schema match",
+            "label": "Schema preservation",
             "value": schema_match,
             "detail": "Approved source fields retained in the synthetic output.",
         },
@@ -3182,19 +3198,19 @@ def build_validation_dashboard(metadata: list[dict[str, Any]], controls: dict[st
             "detail": "Operational similarity between source and synthetic columns.",
         },
         {
-            "label": "Privacy score",
+            "label": "Privacy boundary",
             "value": validation["privacy_score"],
             "detail": "Overlap and identifier reuse checks under the current posture.",
         },
         {
             "label": "Statistical fidelity",
             "value": statistical_fidelity,
-            "detail": "Blends schema coverage with detailed fidelity scoring.",
+            "detail": "Blends schema coverage with column-level fidelity.",
         },
         {
-            "label": "Downstream utility",
+            "label": "Sandbox suitability",
             "value": downstream_utility,
-            "detail": "Heuristic signal for analytics, testing, and sandbox usefulness.",
+            "detail": "Indicator for workflow modeling and sandbox use.",
         },
     ]
 
@@ -3291,25 +3307,27 @@ def build_generation_control_rows(controls: dict[str, Any]) -> list[dict[str, st
 def build_validation_report(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> str:
     validation = st.session_state.validation
     if validation is None:
-        return "Validation is not available yet."
+        return "Verification is not available yet."
     lines = [
-        "Synthetic Data Validation Report",
+        "Synthetic Package Release Readiness Report",
         "",
         f"Dataset: {st.session_state.source_label}",
         f"Metadata status: {st.session_state.metadata_status}",
-        f"Release status: {effective_release_status(metadata, controls)}",
-        f"Overall score: {validation['overall_score']}",
-        f"Fidelity score: {validation['fidelity_score']}",
-        f"Privacy score: {validation['privacy_score']}",
+        f"Release recommendation: {effective_release_status(metadata, controls)}",
         "",
-        "Operational dashboard:",
+        "Supporting verification indicators (secondary):",
+        f"- Fidelity indicator: {validation['fidelity_score']}",
+        f"- Privacy indicator: {validation['privacy_score']}",
+        f"- Overall indicator: {validation['overall_score']}",
+        "",
+        "Verification breakdown:",
     ]
     for metric in build_validation_dashboard(metadata, controls):
         lines.append(f"- {metric['label']}: {metric['value']} ({metric['detail']})")
     lines.extend(["", "Active generation controls:"])
     for row in build_generation_control_rows(controls):
         lines.append(f"- {row['Control']}: {row['Setting']} ({row['Effect']})")
-    lines.extend(["", "Privacy checks:"])
+    lines.extend(["", "Governance and privacy checks:"])
     for _, row in validation["privacy_checks"].iterrows():
         lines.append(f"- {row['check']}: {row['result']} ({row['interpretation']})")
     lines.extend(
@@ -3509,12 +3527,12 @@ def render_login_screen() -> None:
         st.markdown(
             f"""
             <div class="login-brand-card">
-                <div class="environment-tag">Southlake Health · Clinical Analytics Workspace</div>
+                <div class="environment-tag">Southlake Health — Agentic Synthetic Data Workspace</div>
                 <div class="login-brand-lockup">
                     {'<img src="' + logo_uri + '" class="login-logo" alt="Southlake Health logo" />' if logo_uri else ''}
                     <div class="login-kicker">Authorized access only</div>
                     <h1 class="login-title">{APP_TITLE}</h1>
-                    <div class="login-subtitle">Secure access to governed synthetic data workflows for hospital teams.</div>
+                    <div class="login-subtitle">Agentic synthetic data creation with governed review, metadata transparency, and controlled release for hospital teams.</div>
                     <div class="trust-badge-row">
                         <div class="trust-badge">Role-Based Access</div>
                         <div class="trust-badge">Audit Logging</div>
@@ -3634,8 +3652,8 @@ def render_header(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> N
                 <div class="brand-lockup">
                     {'<img src="' + logo_uri + '" class="brand-logo" alt="Southlake Health logo" />' if logo_uri else ''}
                     <div class="brand-copy">
-                        <div class="brand-title">Southlake Health Synthetic Data Workspace</div>
-                        <div class="brand-subtitle">Governed synthetic healthcare data operations</div>
+                        <div class="brand-title">Southlake Health — Agentic Synthetic Data Workspace</div>
+                        <div class="brand-subtitle">A governed, metadata-driven workflow for synthetic healthcare data creation, review, and release readiness</div>
                     </div>
                 </div>
             </div>
@@ -3776,7 +3794,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             st.text_input(
                 "Project purpose",
                 key="project_purpose",
-                placeholder="Example: ED operations dashboard prototyping",
+                placeholder="Example: ED operational workflow modeling",
             )
         else:
             render_role_restriction("This role can view the request summary but cannot edit request details.")
@@ -3921,6 +3939,10 @@ def render_step_two() -> None:
     metric_cols[1].metric("High severity", hygiene["severity_counts"]["High"])
     metric_cols[2].metric("Medium severity", hygiene["severity_counts"]["Medium"])
     metric_cols[3].metric("Duplicate rows", st.session_state.profile["summary"]["duplicate_rows"])
+
+    # Agent: Classified hygiene assessment
+    classified_issues = classify_hygiene_issues(hygiene)
+    render_classified_hygiene(classified_issues)
 
     issues_frame = pd.DataFrame(
         [
@@ -4114,6 +4136,11 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                     status="Updated",
                 )
                 rerun_with_persist()
+
+    # Agent: Metadata review artifact
+    classified_for_artifact = classify_hygiene_issues(st.session_state.hygiene) if has_active_dataset() else []
+    meta_artifact = build_metadata_review_artifact(metadata, st.session_state.profile, classified_for_artifact)
+    render_metadata_review_artifact(meta_artifact)
 
     review_tab, quick_tab, edit_tab, record_tab = st.tabs(
         ["Settings overview", "Targeted field actions", "Advanced editor", "Submitted version"]
@@ -4551,7 +4578,7 @@ def render_step_five(metadata: list[dict[str, Any]], controls: dict[str, Any]) -
     metric_cols[0].metric("Rows generated", summary["rows_generated"])
     metric_cols[1].metric("Fields included", summary["columns_generated"])
     metric_cols[2].metric("Noise posture", summary["noise_mode"])
-    metric_cols[3].metric("Validation score", st.session_state.validation["overall_score"] if st.session_state.validation else "Pending")
+    metric_cols[3].metric("Verification", "Complete" if st.session_state.validation else "Pending")
 
     preview_tab, note_tab = st.tabs(["Synthetic preview", "Run settings"])
     with preview_tab:
@@ -4581,11 +4608,50 @@ def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) ->
         return
 
     validation_report = build_validation_report(metadata, controls)
-    top_cols = st.columns(4)
-    top_cols[0].metric("Output status", effective_release_status(metadata, controls))
-    top_cols[1].metric("Overall score", st.session_state.validation["overall_score"])
-    top_cols[2].metric("Generated by", st.session_state.current_role if has_permission("generate") else (st.session_state.metadata_submitted_by or "System"))
-    top_cols[3].metric("Shared at", st.session_state.results_shared_at or "Not shared")
+
+    # Compact status strip (no prominent scores)
+    release_state = effective_release_status(metadata, controls)
+    gen_by = st.session_state.current_role if has_permission("generate") else (st.session_state.metadata_submitted_by or "System")
+    shared_at = st.session_state.results_shared_at or "Not yet shared"
+    st.markdown(
+        f"""
+        <div style="display:flex;gap:1.5rem;padding:0.75rem 1rem;background:var(--surface);border:1px solid var(--line);
+            border-radius:14px;margin-bottom:0.85rem;font-size:0.86rem;box-shadow:var(--shadow);">
+            <div><span style="color:var(--muted);font-weight:600;">Release state:</span> <strong style="color:var(--text);">{release_state}</strong></div>
+            <div><span style="color:var(--muted);font-weight:600;">Generated by:</span> <strong style="color:var(--text);">{gen_by}</strong></div>
+            <div><span style="color:var(--muted);font-weight:600;">Shared:</span> <strong style="color:var(--text);">{shared_at}</strong></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Agent: Release Readiness Verdicts ──
+    verdicts = build_release_readiness_verdicts(
+        validation=st.session_state.validation,
+        metadata=metadata,
+        hygiene=st.session_state.hygiene,
+        synthetic_df_columns=list(st.session_state.synthetic_df.columns),
+    )
+    render_release_readiness_verdicts(verdicts)
+
+    # Agent: Stakeholder interpretation
+    step6_readiness = compute_agent_readiness(
+        profile=st.session_state.get("profile"),
+        hygiene=st.session_state.get("hygiene"),
+        metadata=metadata, controls=controls,
+        validation=st.session_state.get("validation"),
+        intake_confirmed=True, hygiene_reviewed=True, settings_reviewed=True,
+        metadata_status=st.session_state.get("metadata_status", "Approved"),
+        synthetic_ready=True,
+        results_shared=bool(st.session_state.get("results_shared_at")),
+    )
+    stakeholder_blocks = build_stakeholder_interpretations(
+        validation=st.session_state.validation,
+        hygiene=st.session_state.hygiene,
+        metadata=metadata,
+        readiness=step6_readiness,
+    )
+    render_stakeholder_interpretations(stakeholder_blocks)
 
     left_col, right_col = st.columns([1.08, 0.92], gap="large")
     with left_col:
@@ -4594,10 +4660,17 @@ def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) ->
             st.dataframe(st.session_state.synthetic_df.head(20), use_container_width=True, hide_index=True)
         with result_tabs[1]:
             validation = st.session_state.validation
-            summary_cols = st.columns(3)
-            summary_cols[0].metric("Fidelity", validation["fidelity_score"])
-            summary_cols[1].metric("Privacy", validation["privacy_score"])
-            summary_cols[2].metric("Overall", validation["overall_score"])
+            st.markdown(
+                f"""
+                <div style="padding:0.6rem 0.85rem;background:var(--surface-soft);border:1px solid var(--line);
+                    border-radius:12px;margin-bottom:0.7rem;font-size:0.82rem;color:var(--muted);">
+                    <span style="color:var(--text);font-weight:600;">Supporting metrics:</span>
+                    fidelity {validation['fidelity_score']} · privacy {validation['privacy_score']} · overall {validation['overall_score']}.
+                    Release decisions are driven by the verdict panel above, not raw scores.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.dataframe(build_comparison_table(st.session_state.source_df, st.session_state.synthetic_df, metadata), use_container_width=True, hide_index=True)
             available_columns = [
                 item["column"]
@@ -4688,7 +4761,56 @@ def main() -> None:
     render_step_navigation(metadata, controls)
     render_action_center(metadata, controls)
 
+    # ── Agent Layer ──
     current_step = st.session_state.current_step
+    render_agent_orchestration_panel(current_step, metadata, controls)
+
+    # Agent readiness assessment
+    readiness = compute_agent_readiness(
+        profile=st.session_state.get("profile"),
+        hygiene=st.session_state.get("hygiene"),
+        metadata=metadata,
+        controls=controls,
+        validation=st.session_state.get("validation"),
+        intake_confirmed=st.session_state.get("intake_confirmed", False),
+        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+        settings_reviewed=st.session_state.get("settings_reviewed", False),
+        metadata_status=st.session_state.get("metadata_status", "Draft"),
+        synthetic_ready=st.session_state.get("synthetic_df") is not None,
+        results_shared=bool(st.session_state.get("results_shared_at")),
+    )
+    render_agent_readiness_panel(readiness)
+
+    # Lineage bar: show at steps 1-5
+    if has_active_dataset() and current_step >= 1:
+        lineage_stage = 0
+        if st.session_state.intake_confirmed:
+            lineage_stage = 1
+        if st.session_state.settings_reviewed:
+            lineage_stage = 2
+        if st.session_state.synthetic_df is not None:
+            lineage_stage = 3
+        if st.session_state.validation is not None:
+            lineage_stage = 4
+        render_metadata_lineage(lineage_stage)
+
+    # Agent decision log (collapsible)
+    with st.expander("Agent decision log", expanded=False):
+        render_agent_timeline(
+            profile=st.session_state.get("profile"),
+            hygiene=st.session_state.get("hygiene"),
+            metadata=metadata,
+            controls=controls,
+            generation_summary=st.session_state.get("generation_summary"),
+            validation=st.session_state.get("validation"),
+            intake_confirmed=st.session_state.get("intake_confirmed", False),
+            hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+            settings_reviewed=st.session_state.get("settings_reviewed", False),
+            metadata_status=st.session_state.get("metadata_status", "Draft"),
+            synthetic_ready=st.session_state.get("synthetic_df") is not None,
+            results_shared=bool(st.session_state.get("results_shared_at")),
+        )
+
     if current_step == 0:
         render_step_one(metadata)
     elif current_step == 1:

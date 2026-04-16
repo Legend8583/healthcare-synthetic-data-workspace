@@ -187,64 +187,40 @@ def render_agent_timeline(
     results_shared: bool,
 ) -> None:
     """Render the agent reasoning timeline in the UI."""
+    import html as _html
     events = build_agent_timeline(
         profile, hygiene, metadata, controls, generation_summary, validation,
         intake_confirmed, hygiene_reviewed, settings_reviewed, metadata_status,
         synthetic_ready, results_shared,
     )
 
-    status_colors = {
-        "done": "var(--good)",
-        "active": "var(--brand)",
-        "warn": "var(--warn)",
-        "pending": "var(--muted)",
-    }
-    status_bg = {
-        "done": "var(--good-bg)",
-        "active": "rgba(11, 94, 168, 0.08)",
-        "warn": "var(--warn-bg)",
-        "pending": "rgba(214, 226, 236, 0.3)",
-    }
+    status_colors = {"done": "#2E7040", "active": "#004B8B", "warn": "#9C6A17", "pending": "#668097"}
+    status_bg = {"done": "#EDF9F3", "active": "rgba(11,94,168,0.08)", "warn": "#FFF6E3", "pending": "rgba(214,226,236,0.3)"}
 
-    timeline_html = ""
+    parts = []
     for i, ev in enumerate(events):
-        color = status_colors.get(ev["status"], "var(--muted)")
+        color = status_colors.get(ev["status"], "#668097")
         bg = status_bg.get(ev["status"], "transparent")
         is_last = i == len(events) - 1
-        connector = "" if is_last else (
-            f'<div style="width:2px;height:12px;background:{color};opacity:0.3;margin:2px 0 2px 7px;"></div>'
+        connector = "" if is_last else f'<div style="width:2px;height:12px;background:{color};opacity:0.3;margin:2px 0 2px 7px;"></div>'
+        icon = "&#10003;" if ev["status"] == "done" else "&#9679;" if ev["status"] == "active" else "&#9888;" if ev["status"] == "warn" else "&#9675;"
+        text_color = "#2D3E50" if ev["status"] == "done" else color
+        label = _html.escape(ev["label"])
+        detail = _html.escape(ev["detail"])
+
+        parts.append(
+            f'<div style="display:flex;gap:10px;margin-bottom:2px;">'
+            f'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;min-width:16px;">'
+            f'<div style="width:16px;height:16px;border-radius:8px;background:{bg};border:1.5px solid {color};display:flex;align-items:center;justify-content:center;font-size:9px;color:{color};font-weight:700;">{icon}</div>'
+            f'{connector}</div>'
+            f'<div style="padding-bottom:6px;">'
+            f'<div style="font-size:0.88rem;font-weight:600;color:{text_color};line-height:1.3;">{label}</div>'
+            f'<div style="font-size:0.82rem;color:#668097;line-height:1.45;margin-top:1px;">{detail}</div>'
+            f'</div></div>'
         )
-        icon = "✓" if ev["status"] == "done" else "●" if ev["status"] == "active" else "⚠" if ev["status"] == "warn" else "○"
 
-        timeline_html += f"""
-        <div style="display:flex;gap:10px;margin-bottom:2px;">
-            <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;min-width:16px;">
-                <div style="width:16px;height:16px;border-radius:8px;background:{bg};border:1.5px solid {color};
-                    display:flex;align-items:center;justify-content:center;font-size:9px;color:{color};font-weight:700;">
-                    {icon}
-                </div>
-                {connector}
-            </div>
-            <div style="padding-bottom:6px;">
-                <div style="font-size:0.88rem;font-weight:600;color:{'var(--text)' if ev['status'] == 'done' else color};line-height:1.3;">
-                    {ev['label']}
-                </div>
-                <div style="font-size:0.82rem;color:var(--muted);line-height:1.45;margin-top:1px;">
-                    {ev['detail']}
-                </div>
-            </div>
-        </div>
-        """
-
-    st.markdown(
-        f"""
-        <div class="action-shell">
-            <h4>Agent decision log</h4>
-            <div style="margin-top:0.7rem;">{timeline_html}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    html_out = '<div class="action-shell"><h4>Agent decision log</h4><div style="margin-top:0.7rem;">' + "".join(parts) + '</div></div>'
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Agent Orchestration Panel ─────────────────────────────────────────────────
@@ -285,89 +261,68 @@ STEP_AGENT_GUIDANCE: dict[int, dict[str, str]] = {
 
 def render_agent_orchestration_panel(step_index: int, metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
     """Render the agent guidance panel for the current workflow step."""
+    import html as _html
     guidance = STEP_AGENT_GUIDANCE.get(step_index, {})
     if not guidance:
         return
 
-    objective = guidance.get("objective", "")
-    action = guidance.get("action", "")
-    why = guidance.get("why", "")
+    objective = _html.escape(guidance.get("objective", ""))
+    action = _html.escape(guidance.get("action", ""))
+    why = _html.escape(guidance.get("why", ""))
 
-    st.markdown(
-        f"""
-        <div class="action-shell" style="border-left: 3px solid var(--accent);">
-            <h4>Agent guidance</h4>
-            <div style="margin-top:0.55rem;">
-                <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--brand);margin-bottom:0.25rem;">
-                    Current objective
-                </div>
-                <div style="font-size:1.02rem;font-weight:600;color:var(--text);line-height:1.35;margin-bottom:0.6rem;">
-                    {objective}
-                </div>
-                <div style="font-size:0.9rem;color:var(--muted);line-height:1.55;margin-bottom:0.45rem;">
-                    {action}
-                </div>
-                <div style="font-size:0.84rem;color:var(--brand);line-height:1.5;font-style:italic;">
-                    {why}
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    html_out = (
+        '<div class="action-shell" style="border-left:3px solid #19CBC5;">'
+        '<h4>Agent guidance</h4>'
+        '<div style="margin-top:0.55rem;">'
+        '<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#004B8B;margin-bottom:0.25rem;">Current objective</div>'
+        f'<div style="font-size:1.02rem;font-weight:600;color:#2D3E50;line-height:1.35;margin-bottom:0.6rem;">{objective}</div>'
+        f'<div style="font-size:0.9rem;color:#668097;line-height:1.55;margin-bottom:0.45rem;">{action}</div>'
+        f'<div style="font-size:0.84rem;color:#004B8B;line-height:1.5;font-style:italic;">{why}</div>'
+        '</div></div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Metadata Lineage Bar ─────────────────────────────────────────────────────
 
 def render_metadata_lineage(active_stage: int = 0) -> None:
-    """Render a visual lineage bar: Source → Metadata → Adjusted → Synthetic → Verified."""
+    """Render a visual lineage bar: Source > Metadata > Adjusted > Synthetic > Verified."""
     stages = [
-        {"label": "Source data", "sub": "Uploaded CSV"},
-        {"label": "Extracted metadata", "sub": "Statistical blueprint"},
-        {"label": "Adjusted metadata", "sub": "Corrections applied"},
-        {"label": "Synthetic output", "sub": "Generated records"},
-        {"label": "Verified", "sub": "Fidelity confirmed"},
+        ("Source data", "Uploaded CSV"),
+        ("Extracted metadata", "Statistical blueprint"),
+        ("Adjusted metadata", "Corrections applied"),
+        ("Synthetic output", "Generated records"),
+        ("Verified", "Fidelity confirmed"),
     ]
 
-    items_html = ""
-    for i, stage in enumerate(stages):
+    parts = []
+    for i, (label, sub) in enumerate(stages):
         if i < active_stage:
-            color = "var(--good)"
-            bg = "var(--good-bg)"
-            icon = "✓"
+            color = "#2E7040"; bg = "#EDF9F3"; icon = "&#10003;"
         elif i == active_stage:
-            color = "var(--brand)"
-            bg = "rgba(11, 94, 168, 0.1)"
-            icon = str(i + 1)
+            color = "#004B8B"; bg = "rgba(11,94,168,0.1)"; icon = str(i + 1)
         else:
-            color = "var(--muted)"
-            bg = "rgba(214, 226, 236, 0.3)"
-            icon = str(i + 1)
+            color = "#668097"; bg = "rgba(214,226,236,0.3)"; icon = str(i + 1)
 
-        items_html += f"""
-        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;flex:1;">
-            <div style="width:24px;height:24px;border-radius:12px;background:{bg};border:1.5px solid {color};
-                display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{color};">
-                {icon}
-            </div>
-            <div style="font-size:0.78rem;font-weight:600;color:{color};text-align:center;white-space:nowrap;">{stage['label']}</div>
-            <div style="font-size:0.7rem;color:var(--muted);text-align:center;">{stage['sub']}</div>
-        </div>
-        """
+        parts.append(
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;flex:1;">'
+            f'<div style="width:24px;height:24px;border-radius:12px;background:{bg};border:1.5px solid {color};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:{color};">{icon}</div>'
+            f'<div style="font-size:0.78rem;font-weight:600;color:{color};text-align:center;white-space:nowrap;">{label}</div>'
+            f'<div style="font-size:0.7rem;color:#668097;text-align:center;">{sub}</div>'
+            f'</div>'
+        )
         if i < len(stages) - 1:
-            conn_color = "var(--good)" if i < active_stage else "var(--line)"
-            items_html += f'<div style="flex:0.5;height:2px;background:{conn_color};margin-top:12px;min-width:12px;"></div>'
+            conn_color = "#2E7040" if i < active_stage else "#DDE5ED"
+            parts.append(f'<div style="flex:0.5;height:2px;background:{conn_color};margin-top:12px;min-width:12px;"></div>')
 
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:flex-start;gap:0;padding:14px 16px;
-            background:var(--surface);border:1px solid var(--line);border-radius:18px;
-            margin-bottom:0.85rem;box-shadow:var(--shadow);">
-            {items_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
+    html_out = (
+        '<div style="display:flex;align-items:flex-start;gap:0;padding:14px 16px;'
+        'background:#FFFFFF;border:1px solid #DDE5ED;border-radius:18px;'
+        'margin-bottom:0.85rem;box-shadow:0 10px 24px rgba(8,70,125,0.08);">'
+        + "".join(parts)
+        + '</div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Release Readiness Verdicts ────────────────────────────────────────────────
@@ -920,71 +875,71 @@ def build_metadata_review_artifact(
 
 
 def render_metadata_review_artifact(artifact: list[dict[str, Any]]) -> None:
-    """Render metadata lineage table: extracted → recommended → approved → effect."""
+    """Render metadata lineage table: extracted > recommended > approved > effect."""
+    import html as _html
     status_labels = {
-        "unchanged": ("Preserved", "var(--muted)"),
-        "adjusted": ("Adjusted", "var(--brand)"),
-        "excluded": ("Excluded", "var(--muted)"),
-        "blocker_pending": ("Blocker", "var(--danger)"),
+        "unchanged": ("Preserved", "#668097"),
+        "adjusted": ("Adjusted", "#004B8B"),
+        "excluded": ("Excluded", "#668097"),
+        "blocker_pending": ("Blocker", "#9D2B3C"),
     }
 
-    rows_html = ""
+    rows = []
     for item in artifact:
-        label, color = status_labels.get(item["status"], ("Unknown", "var(--muted)"))
-        rows_html += f"""
-        <tr style="border-bottom:1px solid rgba(214,226,236,0.5);">
-            <td style="padding:0.5rem 0.6rem;font-weight:600;font-size:0.86rem;vertical-align:top;">
-                {item['column']}
-                <div style="font-size:0.72rem;color:var(--muted);font-weight:500;margin-top:0.1rem;">{item['role']}</div>
-            </td>
-            <td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:var(--muted);vertical-align:top;">{item['extracted']}</td>
-            <td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:var(--text);vertical-align:top;">{item['recommended']}</td>
-            <td style="padding:0.5rem 0.4rem;vertical-align:top;">
-                <span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:999px;font-size:0.72rem;
-                    font-weight:700;color:{color};background:{color}11;border:1px solid {color}22;white-space:nowrap;">{label}</span>
-                <div style="font-size:0.78rem;color:var(--text);margin-top:0.25rem;">{item['approved']}</div>
-            </td>
-            <td style="padding:0.5rem 0.4rem;font-size:0.78rem;color:var(--muted);line-height:1.4;vertical-align:top;">{item['effect']}</td>
-        </tr>
-        """
+        label, color = status_labels.get(item["status"], ("Unknown", "#668097"))
+        col = _html.escape(item["column"])
+        role = _html.escape(item["role"])
+        extracted = _html.escape(item["extracted"])
+        recommended = _html.escape(item["recommended"])
+        approved = _html.escape(item["approved"])
+        effect = _html.escape(item["effect"])
+
+        rows.append(
+            f'<tr style="border-bottom:1px solid rgba(214,226,236,0.5);">'
+            f'<td style="padding:0.5rem 0.6rem;font-weight:600;font-size:0.86rem;vertical-align:top;">{col}<div style="font-size:0.72rem;color:#668097;font-weight:500;margin-top:0.1rem;">{role}</div></td>'
+            f'<td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:#668097;vertical-align:top;">{extracted}</td>'
+            f'<td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:#2D3E50;vertical-align:top;">{recommended}</td>'
+            f'<td style="padding:0.5rem 0.4rem;vertical-align:top;">'
+            f'<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:999px;font-size:0.72rem;font-weight:700;color:{color};background:{color}11;border:1px solid {color}33;white-space:nowrap;">{label}</span>'
+            f'<div style="font-size:0.78rem;color:#2D3E50;margin-top:0.25rem;">{approved}</div></td>'
+            f'<td style="padding:0.5rem 0.4rem;font-size:0.78rem;color:#668097;line-height:1.4;vertical-align:top;">{effect}</td>'
+            f'</tr>'
+        )
 
     included = sum(1 for a in artifact if a["included"])
     blockers = sum(1 for a in artifact if a["blocker"])
     adjusted = sum(1 for a in artifact if a["status"] == "adjusted")
 
-    st.markdown(
-        f"""
-        <div class="action-shell">
-            <h4>Metadata lineage artifact</h4>
-            <div style="display:flex;gap:1.2rem;margin:0.5rem 0 0.75rem 0;font-size:0.84rem;color:var(--muted);">
-                <span><strong style="color:var(--text);">{included}</strong> fields included</span>
-                <span><strong style="color:var(--brand);">{adjusted}</strong> adjusted from baseline</span>
-                <span><strong style="color:var(--danger);">{blockers}</strong> blocker(s) pending</span>
-            </div>
-            <div style="overflow-x:auto;">
-                <table style="width:100%;border-collapse:collapse;font-size:0.86rem;">
-                    <thead>
-                        <tr style="border-bottom:2px solid var(--line);">
-                            <th style="padding:0.5rem 0.6rem;text-align:left;color:var(--muted);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Field</th>
-                            <th style="padding:0.5rem 0.4rem;text-align:left;color:var(--muted);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Extracted metadata</th>
-                            <th style="padding:0.5rem 0.4rem;text-align:left;color:var(--muted);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Agent recommendation</th>
-                            <th style="padding:0.5rem 0.4rem;text-align:left;color:var(--muted);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Approved assumption</th>
-                            <th style="padding:0.5rem 0.4rem;text-align:left;color:var(--muted);font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Effect on generation</th>
-                        </tr>
-                    </thead>
-                    <tbody>{rows_html}</tbody>
-                </table>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    th_style = 'padding:0.5rem 0.4rem;text-align:left;color:#668097;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+
+    html_out = (
+        '<div class="action-shell">'
+        '<h4>Metadata lineage artifact</h4>'
+        f'<div style="display:flex;gap:1.2rem;margin:0.5rem 0 0.75rem 0;font-size:0.84rem;color:#668097;">'
+        f'<span><strong style="color:#2D3E50;">{included}</strong> fields included</span>'
+        f'<span><strong style="color:#004B8B;">{adjusted}</strong> adjusted from baseline</span>'
+        f'<span><strong style="color:#9D2B3C;">{blockers}</strong> blocker(s) pending</span>'
+        f'</div>'
+        '<div style="overflow-x:auto;">'
+        '<table style="width:100%;border-collapse:collapse;font-size:0.86rem;">'
+        f'<thead><tr style="border-bottom:2px solid #DDE5ED;">'
+        f'<th style="padding:0.5rem 0.6rem;text-align:left;{th_style}">Field</th>'
+        f'<th style="{th_style}">Extracted metadata</th>'
+        f'<th style="{th_style}">Agent recommendation</th>'
+        f'<th style="{th_style}">Approved assumption</th>'
+        f'<th style="{th_style}">Effect on generation</th>'
+        f'</tr></thead>'
+        '<tbody>' + "".join(rows) + '</tbody>'
+        '</table></div></div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Hygiene Classification Display ───────────────────────────────────────────
 
 def render_classified_hygiene(classified: list[dict[str, Any]]) -> None:
     """Render hygiene findings with blocker/warning/informational classifications."""
+    import html as _html
     if not classified:
         return
 
@@ -995,41 +950,40 @@ def render_classified_hygiene(classified: list[dict[str, Any]]) -> None:
     def _render_group(items: list, title: str, color: str, bg: str) -> str:
         if not items:
             return ""
-        rows = ""
+        rows = []
         for item in items:
-            rows += f"""
-            <div style="display:flex;gap:0.6rem;align-items:flex-start;padding:0.55rem 0;border-bottom:1px solid rgba(214,226,236,0.4);">
-                <span style="display:inline-block;padding:0.15rem 0.4rem;border-radius:999px;font-size:0.7rem;
-                    font-weight:700;font-family:monospace;background:{bg};color:{color};border:1px solid {color}22;
-                    white-space:nowrap;margin-top:0.1rem;">{item['reason_code']}</span>
-                <div>
-                    <div style="font-size:0.88rem;font-weight:600;color:var(--text);">{item['column']}</div>
-                    <div style="font-size:0.82rem;color:var(--muted);line-height:1.45;">{item['finding']}</div>
-                </div>
-            </div>
-            """
-        return f"""
-        <div style="margin-bottom:0.7rem;">
-            <div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{color};margin-bottom:0.3rem;">
-                {title} ({len(items)})
-            </div>
-            {rows}
-        </div>
-        """
+            code = _html.escape(item.get("reason_code", ""))
+            col = _html.escape(item.get("column", ""))
+            finding = _html.escape(item.get("finding", ""))
+            rows.append(
+                f'<div style="display:flex;gap:0.6rem;align-items:flex-start;padding:0.55rem 0;border-bottom:1px solid rgba(214,226,236,0.4);">'
+                f'<span style="display:inline-block;padding:0.15rem 0.4rem;border-radius:999px;font-size:0.7rem;'
+                f'font-weight:700;font-family:monospace;background:{bg};color:{color};border:1px solid {color}33;'
+                f'white-space:nowrap;margin-top:0.1rem;">{code}</span>'
+                f'<div>'
+                f'<div style="font-size:0.88rem;font-weight:600;color:#2D3E50;">{col}</div>'
+                f'<div style="font-size:0.82rem;color:#668097;line-height:1.45;">{finding}</div>'
+                f'</div></div>'
+            )
+        return (
+            f'<div style="margin-bottom:0.7rem;">'
+            f'<div style="font-size:0.76rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{color};margin-bottom:0.3rem;">'
+            f'{title} ({len(items)})</div>'
+            + "".join(rows)
+            + '</div>'
+        )
 
-    html = _render_group(blockers, "Blockers", "var(--danger)", "var(--danger-bg)")
-    html += _render_group(warnings, "Warnings", "var(--warn)", "var(--warn-bg)")
-    html += _render_group(info, "Informational", "var(--muted)", "rgba(214,226,236,0.2)")
+    body = _render_group(blockers, "Blockers", "#9D2B3C", "#FFF1F3")
+    body += _render_group(warnings, "Warnings", "#9C6A17", "#FFF6E3")
+    body += _render_group(info, "Informational", "#668097", "rgba(214,226,236,0.2)")
 
-    st.markdown(
-        f"""
-        <div class="action-shell">
-            <h4>Agent hygiene assessment</h4>
-            <div style="margin-top:0.5rem;">{html}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    html_out = (
+        '<div class="action-shell">'
+        '<h4>Agent hygiene assessment</h4>'
+        '<div style="margin-top:0.5rem;">' + body + '</div>'
+        '</div>'
     )
+    st.markdown(html_out, unsafe_allow_html=True)
 
 
 # ── Stakeholder Interpretation ────────────────────────────────────────────────

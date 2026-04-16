@@ -722,91 +722,80 @@ def compute_agent_readiness(
 
 def render_agent_readiness_panel(readiness: dict[str, Any]) -> None:
     """Render the agent readiness status as a prominent panel."""
+    import html as _html
     status = readiness["status"]
-    label = readiness["label"]
-    confidence = readiness["confidence"]
-    recommendation = readiness["recommendation"]
+    label = _html.escape(readiness["label"])
+    confidence = _html.escape(readiness["confidence"].title())
+    recommendation = _html.escape(readiness["recommendation"])
     blockers = readiness["blockers"]
     warnings = readiness["warnings"]
     codes = readiness["reason_codes"]
 
-    # Status styling
     if status in ("release_ready", "released"):
-        border = "var(--good)"
-        badge_bg = "var(--good-bg)"
-        badge_color = "var(--good)"
+        border = "#2E7040"; badge_bg = "#EDF9F3"; badge_color = "#136B48"
     elif status in ("blocked", "needs_action"):
-        border = "var(--danger)"
-        badge_bg = "var(--danger-bg)"
-        badge_color = "var(--danger)"
+        border = "#C62828"; badge_bg = "#FFF1F3"; badge_color = "#9D2B3C"
     elif status in ("pending_review", "review_ready"):
-        border = "var(--brand)"
-        badge_bg = "rgba(11, 94, 168, 0.08)"
-        badge_color = "var(--brand)"
+        border = "#004B8B"; badge_bg = "#EBF1F7"; badge_color = "#08467D"
     else:
-        border = "var(--warn)"
-        badge_bg = "var(--warn-bg)"
-        badge_color = "var(--warn)"
+        border = "#D68A00"; badge_bg = "#FFF6E3"; badge_color = "#9C6A17"
 
-    # Blockers HTML
     blockers_html = ""
     if blockers:
-        items = "".join(f'<li style="margin-bottom:0.25rem;">{b}</li>' for b in blockers)
-        blockers_html = f"""
-        <div style="margin-top:0.55rem;padding:0.6rem 0.75rem;background:var(--danger-bg);border:1px solid rgba(143,45,53,0.15);border-radius:12px;">
-            <div style="font-size:0.76rem;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Blocking issues</div>
-            <ul style="margin:0;padding-left:1rem;color:var(--text);font-size:0.86rem;line-height:1.5;">{items}</ul>
-        </div>
-        """
+        items = "".join(f'<li>{_html.escape(b)}</li>' for b in blockers)
+        blockers_html = (
+            '<div style="margin-top:0.55rem;padding:0.6rem 0.75rem;background:#FFF1F3;'
+            'border:1px solid rgba(143,45,53,0.15);border-radius:12px;">'
+            '<div style="font-size:0.76rem;font-weight:700;color:#9D2B3C;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Blocking issues</div>'
+            f'<ul style="margin:0;padding-left:1rem;color:#2D3E50;font-size:0.86rem;line-height:1.5;">{items}</ul>'
+            '</div>'
+        )
 
-    # Warnings HTML
     warnings_html = ""
     if warnings:
-        items = "".join(f'<li style="margin-bottom:0.25rem;">{w}</li>' for w in warnings)
-        warnings_html = f"""
-        <div style="margin-top:0.45rem;padding:0.6rem 0.75rem;background:var(--warn-bg);border:1px solid rgba(138,97,22,0.15);border-radius:12px;">
-            <div style="font-size:0.76rem;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Warnings</div>
-            <ul style="margin:0;padding-left:1rem;color:var(--text);font-size:0.86rem;line-height:1.5;">{items}</ul>
-        </div>
-        """
+        items = "".join(f'<li>{_html.escape(w)}</li>' for w in warnings)
+        warnings_html = (
+            '<div style="margin-top:0.45rem;padding:0.6rem 0.75rem;background:#FFF6E3;'
+            'border:1px solid rgba(138,97,22,0.15);border-radius:12px;">'
+            '<div style="font-size:0.76rem;font-weight:700;color:#9C6A17;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.25rem;">Warnings</div>'
+            f'<ul style="margin:0;padding-left:1rem;color:#2D3E50;font-size:0.86rem;line-height:1.5;">{items}</ul>'
+            '</div>'
+        )
 
-    # Reason codes HTML
     codes_html = ""
     if codes:
-        pills = "".join(
-            f'<span title="{REASON_CODES.get(c, c)}" style="display:inline-block;padding:0.2rem 0.5rem;'
-            f'border-radius:999px;font-size:0.72rem;font-weight:700;font-family:monospace;'
-            f'background:rgba(11,94,168,0.06);border:1px solid rgba(11,94,168,0.12);'
-            f'color:var(--brand);margin-right:0.3rem;margin-bottom:0.25rem;cursor:help;">{c}</span>'
-            for c in codes[:6]
-        )
-        codes_html = f'<div style="margin-top:0.5rem;">{pills}</div>'
+        pill_parts = []
+        for c in codes[:6]:
+            title_text = _html.escape(REASON_CODES.get(c, c))
+            code_text = _html.escape(c)
+            pill_parts.append(
+                f'<span title="{title_text}" style="display:inline-block;padding:0.2rem 0.5rem;'
+                'border-radius:999px;font-size:0.72rem;font-weight:700;font-family:monospace;'
+                'background:rgba(11,94,168,0.06);border:1px solid rgba(11,94,168,0.12);'
+                f'color:#004B8B;margin-right:0.3rem;margin-bottom:0.25rem;cursor:help;">{code_text}</span>'
+            )
+        codes_html = '<div style="margin-top:0.5rem;">' + "".join(pill_parts) + '</div>'
 
-    st.markdown(
-        f"""
-        <div class="action-shell" style="border-left:3px solid {border};">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div>
-                    <h4>Agent readiness assessment</h4>
-                    <div style="display:inline-block;padding:0.28rem 0.7rem;border-radius:999px;font-size:0.82rem;
-                        font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border}22;
-                        margin-top:0.35rem;">{label}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Confidence</div>
-                    <div style="font-size:0.92rem;font-weight:700;color:{badge_color};margin-top:0.15rem;">{confidence.title()}</div>
-                </div>
-            </div>
-            <div style="margin-top:0.5rem;font-size:0.9rem;color:var(--muted);line-height:1.55;">
-                <strong style="color:var(--text);">Recommendation:</strong> {recommendation}
-            </div>
-            {blockers_html}
-            {warnings_html}
-            {codes_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
+    panel_html = (
+        f'<div class="action-shell" style="border-left:3px solid {border};">'
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+        '<div>'
+        '<h4>Agent readiness assessment</h4>'
+        f'<div style="display:inline-block;padding:0.28rem 0.7rem;border-radius:999px;font-size:0.82rem;'
+        f'font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border}33;margin-top:0.35rem;">{label}</div>'
+        '</div>'
+        '<div style="text-align:right;">'
+        '<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;">Confidence</div>'
+        f'<div style="font-size:0.92rem;font-weight:700;color:{badge_color};margin-top:0.15rem;">{confidence}</div>'
+        '</div>'
+        '</div>'
+        f'<div style="margin-top:0.5rem;font-size:0.9rem;color:#668097;line-height:1.55;">'
+        f'<strong style="color:#2D3E50;">Recommendation:</strong> {recommendation}'
+        '</div>'
+        f'{blockers_html}{warnings_html}{codes_html}'
+        '</div>'
     )
+    st.markdown(panel_html, unsafe_allow_html=True)
 
 
 # ── Metadata Review Artifact ─────────────────────────────────────────────────

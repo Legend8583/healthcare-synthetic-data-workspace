@@ -256,6 +256,11 @@ STEP_AGENT_GUIDANCE: dict[int, dict[str, str]] = {
         "action": "The agent validated the synthetic output against the source metadata, checked for identifier reuse and row overlap, and produced a release readiness assessment.",
         "why": "Verification confirms the synthetic package is analytically useful while maintaining privacy boundaries suitable for downstream modeling.",
     },
+    6: {
+        "objective": "Analyze synthetic dataset within the privacy boundary",
+        "action": "Explore the synthetic output using local analysis or optional API-based chat. Only the synthetic dataset is used. No source records or real patient data are transmitted.",
+        "why": "The privacy boundary ensures that any external analysis operates only on synthetic output, preserving control over sensitive source data.",
+    },
 }
 
 
@@ -1059,5 +1064,133 @@ def render_stakeholder_interpretations(interpretations: list[dict[str, str]]) ->
         '<div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:0.7rem;margin-top:0.6rem;">'
         + "".join(cards)
         + '</div></div>'
+    )
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ── Consolidated Decision Log ─────────────────────────────────────────────────
+
+def render_consolidated_decision_log(
+    readiness: dict[str, Any],
+    profile: dict[str, Any] | None,
+    hygiene: dict[str, Any] | None,
+    metadata: list[dict[str, Any]],
+    controls: dict[str, Any],
+    generation_summary: dict[str, Any] | None,
+    validation: dict[str, Any] | None,
+    intake_confirmed: bool,
+    hygiene_reviewed: bool,
+    settings_reviewed: bool,
+    metadata_status: str,
+    synthetic_ready: bool,
+    results_shared: bool,
+) -> None:
+    """Single coherent agent controller: status + decisions + blockers + next action."""
+    import html as _html
+
+    status = readiness["status"]
+    label = _html.escape(readiness["label"])
+    confidence = _html.escape(readiness["confidence"].title())
+    recommendation = _html.escape(readiness["recommendation"])
+    blockers = readiness["blockers"]
+    warnings = readiness["warnings"]
+    codes = readiness["reason_codes"]
+
+    if status in ("release_ready", "released"):
+        border = "#2E7040"; badge_bg = "#EDF9F3"; badge_color = "#136B48"
+    elif status in ("blocked", "needs_action"):
+        border = "#C62828"; badge_bg = "#FFF1F3"; badge_color = "#9D2B3C"
+    elif status in ("pending_review", "review_ready", "generation_ready"):
+        border = "#004B8B"; badge_bg = "#EBF1F7"; badge_color = "#08467D"
+    else:
+        border = "#D68A00"; badge_bg = "#FFF6E3"; badge_color = "#9C6A17"
+
+    # Status header
+    header = (
+        f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">'
+        f'<div>'
+        f'<div style="display:inline-block;padding:0.28rem 0.7rem;border-radius:999px;font-size:0.82rem;font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border}33;">{label}</div>'
+        f'</div>'
+        f'<div style="text-align:right;font-size:0.78rem;color:#668097;">Confidence: <strong style="color:{badge_color};">{confidence}</strong></div>'
+        f'</div>'
+        f'<div style="font-size:0.88rem;color:#668097;line-height:1.5;margin-bottom:0.5rem;">'
+        f'<strong style="color:#2D3E50;">Next action:</strong> {recommendation}</div>'
+    )
+
+    # Blockers + warnings compact
+    issues_html = ""
+    if blockers:
+        items = " ".join(f'<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.76rem;background:#FFF1F3;color:#9D2B3C;border:1px solid #9D2B3C33;margin:0.15rem 0.2rem;">{_html.escape(b)}</span>' for b in blockers)
+        issues_html += f'<div style="margin-bottom:0.4rem;"><span style="font-size:0.72rem;font-weight:700;color:#9D2B3C;text-transform:uppercase;letter-spacing:0.06em;">Blockers:</span> {items}</div>'
+    if warnings:
+        items = " ".join(f'<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.76rem;background:#FFF6E3;color:#9C6A17;border:1px solid #9C6A1733;margin:0.15rem 0.2rem;">{_html.escape(w)}</span>' for w in warnings)
+        issues_html += f'<div style="margin-bottom:0.4rem;"><span style="font-size:0.72rem;font-weight:700;color:#9C6A17;text-transform:uppercase;letter-spacing:0.06em;">Warnings:</span> {items}</div>'
+
+    # Reason codes
+    codes_html = ""
+    if codes:
+        pills = "".join(
+            f'<span title="{_html.escape(REASON_CODES.get(c, c))}" style="display:inline-block;padding:0.15rem 0.4rem;border-radius:999px;font-size:0.7rem;font-weight:700;font-family:monospace;background:rgba(11,94,168,0.06);border:1px solid rgba(11,94,168,0.12);color:#004B8B;margin-right:0.25rem;margin-bottom:0.2rem;cursor:help;">{_html.escape(c)}</span>'
+            for c in codes[:6]
+        )
+        codes_html = f'<div style="margin-bottom:0.5rem;">{pills}</div>'
+
+    # Decision history (compact)
+    events = build_agent_timeline(
+        profile, hygiene, metadata, controls, generation_summary, validation,
+        intake_confirmed, hygiene_reviewed, settings_reviewed, metadata_status,
+        synthetic_ready, results_shared,
+    )
+    history_items = []
+    for ev in events:
+        if ev["status"] == "done":
+            icon = "&#10003;"; ic = "#2E7040"
+        elif ev["status"] == "active":
+            icon = "&#9679;"; ic = "#004B8B"
+        elif ev["status"] == "warn":
+            icon = "&#9888;"; ic = "#9C6A17"
+        else:
+            icon = "&#9675;"; ic = "#668097"
+        history_items.append(
+            f'<div style="display:flex;gap:8px;padding:0.3rem 0;border-bottom:1px solid rgba(214,226,236,0.3);">'
+            f'<span style="color:{ic};font-size:0.8rem;flex-shrink:0;width:14px;text-align:center;">{icon}</span>'
+            f'<div style="min-width:0;">'
+            f'<div style="font-size:0.82rem;font-weight:600;color:#2D3E50;line-height:1.3;">{_html.escape(ev["label"])}</div>'
+            f'<div style="font-size:0.76rem;color:#668097;line-height:1.35;">{_html.escape(ev["detail"])}</div>'
+            f'</div></div>'
+        )
+
+    history_html = "".join(history_items)
+
+    html_out = (
+        f'<div class="action-shell" style="border-left:3px solid {border};">'
+        '<h4>Agent Decision Log</h4>'
+        + header + issues_html + codes_html
+        + '<details style="margin-top:0.3rem;"><summary style="font-size:0.78rem;font-weight:600;color:#004B8B;cursor:pointer;margin-bottom:0.3rem;">Decision history</summary>'
+        + '<div style="margin-top:0.3rem;">' + history_html + '</div></details>'
+        + '</div>'
+    )
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ── Privacy Boundary Banner ──────────────────────────────────────────────────
+
+def render_privacy_boundary_banner() -> None:
+    """Show the privacy architecture: source → metadata → synthetic → optional analysis."""
+    html_out = (
+        '<div style="display:flex;gap:0;align-items:stretch;margin-bottom:0.85rem;border-radius:14px;overflow:hidden;border:1px solid #DDE5ED;box-shadow:0 10px 24px rgba(8,70,125,0.08);">'
+        '<div style="flex:1;padding:0.7rem 0.8rem;background:#FFF1F3;border-right:1px solid #DDE5ED;">'
+        '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9D2B3C;margin-bottom:0.2rem;">Source data</div>'
+        '<div style="font-size:0.78rem;color:#2D3E50;line-height:1.4;">Stays inside governed workflow. Never sent to external APIs.</div></div>'
+        '<div style="flex:1;padding:0.7rem 0.8rem;background:#EBF1F7;border-right:1px solid #DDE5ED;">'
+        '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#004B8B;margin-bottom:0.2rem;">Metadata extraction</div>'
+        '<div style="font-size:0.78rem;color:#2D3E50;line-height:1.4;">Statistical blueprint only. No individual records leave the pipeline.</div></div>'
+        '<div style="flex:1;padding:0.7rem 0.8rem;background:#EDF9F3;border-right:1px solid #DDE5ED;">'
+        '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.2rem;">Synthetic output</div>'
+        '<div style="font-size:0.78rem;color:#2D3E50;line-height:1.4;">Generated from metadata. Zero source records copied.</div></div>'
+        '<div style="flex:1;padding:0.7rem 0.8rem;background:#FFF6E3;">'
+        '<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9C6A17;margin-bottom:0.2rem;">Optional analysis</div>'
+        '<div style="font-size:0.78rem;color:#2D3E50;line-height:1.4;">Only synthetic data eligible for API or chat exploration.</div></div>'
+        '</div>'
     )
     st.markdown(html_out, unsafe_allow_html=True)

@@ -34,6 +34,8 @@ from src.agent_orchestrator import (
     render_metadata_review_artifact,
     build_stakeholder_interpretations,
     render_stakeholder_interpretations,
+    render_consolidated_decision_log,
+    render_privacy_boundary_banner,
 )
 
 APP_TITLE = "Southlake Health — Agentic Synthetic Data Workspace"
@@ -71,6 +73,11 @@ STEP_CONFIG = [
         "description": "The Data Analyst can download the synthetic dataset and the Manager can review the final output.",
         "owner": "Data Analyst + Manager / Reviewer",
     },
+    {
+        "title": "Analyze Synthetic Data",
+        "description": "Explore the synthetic dataset using local analysis or optional API-based chat. Only synthetic data is used.",
+        "owner": "Data Analyst",
+    },
 ]
 
 ROLE_TO_GROUP: dict[str, str] = {
@@ -79,8 +86,8 @@ ROLE_TO_GROUP: dict[str, str] = {
 }
 
 ROLE_VISIBLE_STEPS: dict[str, list[int]] = {
-    "Data Analyst": [0, 1, 2, 3, 4, 5],
-    "Manager / Reviewer": [3, 4, 5],
+    "Data Analyst": [0, 1, 2, 3, 4, 5, 6],
+    "Manager / Reviewer": [3, 4, 5, 6],
 }
 
 ROLE_CONFIGS: dict[str, dict[str, Any]] = {
@@ -1038,7 +1045,7 @@ def inject_styles() -> None:
 
             .workflow-progress {
                 display: grid;
-                grid-template-columns: repeat(6, minmax(0, 1fr));
+                grid-template-columns: repeat(7, minmax(0, 1fr));
                 gap: 0.55rem;
                 margin-bottom: 0.85rem;
             }
@@ -3402,7 +3409,7 @@ def build_operating_state_cards(metadata: list[dict[str, Any]], controls: dict[s
 
 def step_status_labels(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[str]:
     if not has_active_dataset():
-        return ["Upload needed", "Locked", "Locked", "Locked", "Locked", "Locked"]
+        return ["Upload needed", "Locked", "Locked", "Locked", "Locked", "Locked", "Locked"]
     return [
         "Uploaded" if st.session_state.intake_confirmed else "Action needed",
         "Scanned" if st.session_state.hygiene_reviewed else "Ready",
@@ -3418,6 +3425,7 @@ def step_status_labels(metadata: list[dict[str, Any]], controls: dict[str, Any])
         ),
         "Generated" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting",
         "Shared" if st.session_state.results_shared_at else ("Ready" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting"),
+        "Available" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Locked",
     ]
 
 
@@ -3432,7 +3440,7 @@ def max_unlocked_step(metadata: list[dict[str, Any]], controls: dict[str, Any]) 
         return 3
     if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
         return 4
-    return 5
+    return 6
 
 
 def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, Any], role: str | None = None) -> int:
@@ -4732,11 +4740,124 @@ def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) ->
                 st.metric("Approved by", package.get("approved_by") or "Pending")
                 st.metric("Review note", package.get("review_note") or "None")
 
-    footer_cols = st.columns([0.9, 1.1], gap="large")
-    if has_permission("rollback") and footer_cols[0].button("Return to Generate Synthetic Data", use_container_width=True):
+    footer_cols = st.columns([0.6, 0.5, 0.9], gap="large")
+    if has_permission("rollback") and footer_cols[0].button("Return to Generate", use_container_width=True):
         st.session_state.current_step = 4
         st.rerun()
-    footer_cols[1].caption("The Manager / Reviewer can always return here to review the final synthetic output and validation summary.")
+    if footer_cols[2].button("Continue to Analyze Synthetic Data", type="primary", use_container_width=True, disabled=st.session_state.synthetic_df is None):
+        st.session_state.current_step = 6
+        st.rerun()
+
+
+def render_step_seven(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
+    render_section_header(6, "Explore the synthetic dataset. Only synthetic output is used in this step.")
+    render_previous_step_control(6)
+
+    if st.session_state.synthetic_df is None or st.session_state.validation is None:
+        st.warning("Generate and verify synthetic data before analysis.")
+        return
+
+    if has_stale_generation(metadata, controls):
+        st.warning("Synthetic output is out of date. Regenerate before analyzing.")
+        return
+
+    # Privacy boundary
+    st.markdown(
+        '<div style="padding:0.75rem 1rem;background:#EDF9F3;border:1px solid rgba(19,107,72,0.16);border-radius:14px;margin-bottom:1rem;">'
+        '<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.2rem;">Privacy boundary</div>'
+        '<div style="font-size:0.88rem;color:#2D3E50;line-height:1.5;">This analysis uses only the <strong>synthetic dataset</strong>. '
+        'No source records, no real patient data, and no raw metadata are sent to any external service. '
+        'The governed workflow ensured metadata-only transformation (GOV-01) before this output was produced.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    synthetic_df = st.session_state.synthetic_df
+    analysis_mode = st.radio(
+        "Analysis mode",
+        ["Local analysis", "Chat analysis (synthetic data only)"],
+        horizontal=True,
+        key="step7_analysis_mode",
+    )
+
+    if analysis_mode == "Local analysis":
+        st.markdown("**Synthetic dataset summary**")
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("Records", len(synthetic_df))
+        summary_cols[1].metric("Fields", len(synthetic_df.columns))
+        numeric_cols = synthetic_df.select_dtypes(include="number").columns.tolist()
+        summary_cols[2].metric("Numeric fields", len(numeric_cols))
+        summary_cols[3].metric("Missing cells", int(synthetic_df.isna().sum().sum()))
+
+        preview_tab, stats_tab, dist_tab = st.tabs(["Data preview", "Descriptive statistics", "Distribution"])
+        with preview_tab:
+            st.dataframe(synthetic_df.head(20), use_container_width=True, hide_index=True)
+        with stats_tab:
+            if numeric_cols:
+                st.dataframe(synthetic_df[numeric_cols].describe().round(2), use_container_width=True)
+            else:
+                st.info("No numeric columns in the synthetic output.")
+        with dist_tab:
+            if numeric_cols:
+                selected_col = st.selectbox("Select field", numeric_cols, key="step7_dist_col")
+                st.bar_chart(synthetic_df[selected_col].dropna().value_counts().head(20).sort_index())
+            cat_cols = [c for c in synthetic_df.columns if c not in numeric_cols and synthetic_df[c].nunique() <= 20]
+            if cat_cols:
+                selected_cat = st.selectbox("Categorical field", cat_cols, key="step7_cat_col")
+                st.bar_chart(synthetic_df[selected_cat].fillna("Missing").value_counts().head(15))
+
+    else:
+        st.markdown("**Chat analysis on synthetic output only**")
+        st.markdown(
+            '<div style="padding:0.6rem 0.85rem;background:#FFF6E3;border:1px solid rgba(138,97,22,0.15);border-radius:10px;margin-bottom:0.8rem;font-size:0.84rem;color:#9C6A17;">'
+            'Only the synthetic dataset statistics are shared with the analysis agent. No source records or real patient data are transmitted.</div>',
+            unsafe_allow_html=True,
+        )
+
+        from src.chat_assistant import build_chat_context, generate_chat_reply, generate_demo_chat_reply
+        if "step7_chat" not in st.session_state:
+            st.session_state.step7_chat = []
+
+        synth_context = (
+            f"Synthetic dataset: {len(synthetic_df)} rows, {len(synthetic_df.columns)} columns.\n"
+            f"Columns: {', '.join(synthetic_df.columns[:15])}\n"
+        )
+        for col in synthetic_df.select_dtypes(include="number").columns[:6]:
+            synth_context += f"{col}: mean={synthetic_df[col].mean():.1f}, std={synthetic_df[col].std():.1f}, min={synthetic_df[col].min():.1f}, max={synthetic_df[col].max():.1f}\n"
+        for col in synthetic_df.select_dtypes(exclude="number").columns[:4]:
+            top = synthetic_df[col].value_counts().head(3)
+            synth_context += f"{col}: {', '.join(f'{k} ({v})' for k, v in top.items())}\n"
+
+        for msg in st.session_state.step7_chat:
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+
+        if prompt := st.chat_input("Ask about the synthetic dataset..."):
+            st.session_state.step7_chat.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.write(prompt)
+
+            import os
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if api_key:
+                reply = generate_chat_reply(
+                    api_key=api_key,
+                    user_message=prompt,
+                    chat_history=st.session_state.step7_chat,
+                    context=f"SYNTHETIC DATA ANALYSIS MODE. Only synthetic data is being analyzed.\n{synth_context}",
+                )
+            else:
+                reply = generate_demo_chat_reply(
+                    prompt,
+                    st.session_state.get("profile", {}),
+                    st.session_state.get("hygiene", {}),
+                    st.session_state.get("controls", {}),
+                    st.session_state.get("validation"),
+                )
+
+            st.session_state.step7_chat.append({"role": "assistant", "content": reply})
+            with st.chat_message("assistant"):
+                st.write(reply)
 
 
 def main() -> None:
@@ -4761,16 +4882,12 @@ def main() -> None:
     render_step_navigation(metadata, controls)
     render_action_center(metadata, controls)
 
-    # ── Agent Layer ──
+    # ── Single Agent Decision Log ──
     current_step = st.session_state.current_step
-    render_agent_orchestration_panel(current_step, metadata, controls)
-
-    # Agent readiness assessment
     readiness = compute_agent_readiness(
         profile=st.session_state.get("profile"),
         hygiene=st.session_state.get("hygiene"),
-        metadata=metadata,
-        controls=controls,
+        metadata=metadata, controls=controls,
         validation=st.session_state.get("validation"),
         intake_confirmed=st.session_state.get("intake_confirmed", False),
         hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
@@ -4779,10 +4896,24 @@ def main() -> None:
         synthetic_ready=st.session_state.get("synthetic_df") is not None,
         results_shared=bool(st.session_state.get("results_shared_at")),
     )
-    render_agent_readiness_panel(readiness)
+    render_consolidated_decision_log(
+        readiness=readiness,
+        profile=st.session_state.get("profile"),
+        hygiene=st.session_state.get("hygiene"),
+        metadata=metadata, controls=controls,
+        generation_summary=st.session_state.get("generation_summary"),
+        validation=st.session_state.get("validation"),
+        intake_confirmed=st.session_state.get("intake_confirmed", False),
+        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+        settings_reviewed=st.session_state.get("settings_reviewed", False),
+        metadata_status=st.session_state.get("metadata_status", "Draft"),
+        synthetic_ready=st.session_state.get("synthetic_df") is not None,
+        results_shared=bool(st.session_state.get("results_shared_at")),
+    )
 
-    # Lineage bar: show at steps 1-5
+    # Privacy boundary + lineage bar
     if has_active_dataset() and current_step >= 1:
+        render_privacy_boundary_banner()
         lineage_stage = 0
         if st.session_state.intake_confirmed:
             lineage_stage = 1
@@ -4794,23 +4925,6 @@ def main() -> None:
             lineage_stage = 4
         render_metadata_lineage(lineage_stage)
 
-    # Agent decision log (collapsible)
-    with st.expander("Agent decision log", expanded=False):
-        render_agent_timeline(
-            profile=st.session_state.get("profile"),
-            hygiene=st.session_state.get("hygiene"),
-            metadata=metadata,
-            controls=controls,
-            generation_summary=st.session_state.get("generation_summary"),
-            validation=st.session_state.get("validation"),
-            intake_confirmed=st.session_state.get("intake_confirmed", False),
-            hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-            settings_reviewed=st.session_state.get("settings_reviewed", False),
-            metadata_status=st.session_state.get("metadata_status", "Draft"),
-            synthetic_ready=st.session_state.get("synthetic_df") is not None,
-            results_shared=bool(st.session_state.get("results_shared_at")),
-        )
-
     if current_step == 0:
         render_step_one(metadata)
     elif current_step == 1:
@@ -4821,8 +4935,10 @@ def main() -> None:
         metadata, controls = render_step_four(metadata, controls)
     elif current_step == 4:
         render_step_five(metadata, controls)
-    else:
+    elif current_step == 5:
         render_step_six(metadata, controls)
+    elif current_step == 6:
+        render_step_seven(metadata, controls)
 
     persist_shared_workspace_state()
 

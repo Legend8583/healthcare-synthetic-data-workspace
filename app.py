@@ -22,7 +22,6 @@ from src.validator import validate_synthetic_data
 from src.agent_orchestrator import (
     render_agent_orchestration_panel,
     render_agent_timeline,
-    render_metadata_lineage,
     build_release_readiness_verdicts,
     render_release_readiness_verdicts,
     agent_event_label,
@@ -35,7 +34,7 @@ from src.agent_orchestrator import (
     build_stakeholder_interpretations,
     render_stakeholder_interpretations,
     render_consolidated_decision_log,
-    render_privacy_boundary_banner,
+    render_upload_status_panel,
 )
 
 APP_TITLE = "Southlake Health — Agentic Synthetic Data Workspace"
@@ -4761,14 +4760,10 @@ def render_step_seven(metadata: list[dict[str, Any]], controls: dict[str, Any]) 
         st.warning("Synthetic output is out of date. Regenerate before analyzing.")
         return
 
-    # Privacy boundary
+    # Privacy boundary (slim)
     st.markdown(
-        '<div style="padding:0.75rem 1rem;background:#EDF9F3;border:1px solid rgba(19,107,72,0.16);border-radius:14px;margin-bottom:1rem;">'
-        '<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.2rem;">Privacy boundary</div>'
-        '<div style="font-size:0.88rem;color:#2D3E50;line-height:1.5;">This analysis uses only the <strong>synthetic dataset</strong>. '
-        'No source records, no real patient data, and no raw metadata are sent to any external service. '
-        'The governed workflow ensured metadata-only transformation (GOV-01) before this output was produced.</div>'
-        '</div>',
+        '<div style="padding:0.5rem 0.85rem;background:#EDF9F3;border:1px solid rgba(19,107,72,0.16);border-radius:10px;margin-bottom:1rem;font-size:0.84rem;color:#136B48;">'
+        'Source data stays controlled. Only synthetic output is eligible for optional external analysis.</div>',
         unsafe_allow_html=True,
     )
 
@@ -4882,48 +4877,43 @@ def main() -> None:
     render_step_navigation(metadata, controls)
     render_action_center(metadata, controls)
 
-    # ── Single Agent Decision Log ──
+    # ── Agent Decision Log (step-aware) ──
     current_step = st.session_state.current_step
-    readiness = compute_agent_readiness(
-        profile=st.session_state.get("profile"),
-        hygiene=st.session_state.get("hygiene"),
-        metadata=metadata, controls=controls,
-        validation=st.session_state.get("validation"),
-        intake_confirmed=st.session_state.get("intake_confirmed", False),
-        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-        settings_reviewed=st.session_state.get("settings_reviewed", False),
-        metadata_status=st.session_state.get("metadata_status", "Draft"),
-        synthetic_ready=st.session_state.get("synthetic_df") is not None,
-        results_shared=bool(st.session_state.get("results_shared_at")),
-    )
-    render_consolidated_decision_log(
-        readiness=readiness,
-        profile=st.session_state.get("profile"),
-        hygiene=st.session_state.get("hygiene"),
-        metadata=metadata, controls=controls,
-        generation_summary=st.session_state.get("generation_summary"),
-        validation=st.session_state.get("validation"),
-        intake_confirmed=st.session_state.get("intake_confirmed", False),
-        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-        settings_reviewed=st.session_state.get("settings_reviewed", False),
-        metadata_status=st.session_state.get("metadata_status", "Draft"),
-        synthetic_ready=st.session_state.get("synthetic_df") is not None,
-        results_shared=bool(st.session_state.get("results_shared_at")),
-    )
 
-    # Privacy boundary + lineage bar
-    if has_active_dataset() and current_step >= 1:
-        render_privacy_boundary_banner()
-        lineage_stage = 0
-        if st.session_state.intake_confirmed:
-            lineage_stage = 1
-        if st.session_state.settings_reviewed:
-            lineage_stage = 2
-        if st.session_state.synthetic_df is not None:
-            lineage_stage = 3
-        if st.session_state.validation is not None:
-            lineage_stage = 4
-        render_metadata_lineage(lineage_stage)
+    if current_step == 0:
+        # Step 0: clean upload status only — no blockers/warnings/remediation
+        render_upload_status_panel(
+            intake_confirmed=st.session_state.get("intake_confirmed", False),
+            profile=st.session_state.get("profile"),
+        )
+    else:
+        # Steps 1+: full consolidated decision log with readiness engine
+        readiness = compute_agent_readiness(
+            profile=st.session_state.get("profile"),
+            hygiene=st.session_state.get("hygiene"),
+            metadata=metadata, controls=controls,
+            validation=st.session_state.get("validation"),
+            intake_confirmed=st.session_state.get("intake_confirmed", False),
+            hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+            settings_reviewed=st.session_state.get("settings_reviewed", False),
+            metadata_status=st.session_state.get("metadata_status", "Draft"),
+            synthetic_ready=st.session_state.get("synthetic_df") is not None,
+            results_shared=bool(st.session_state.get("results_shared_at")),
+        )
+        render_consolidated_decision_log(
+            readiness=readiness,
+            profile=st.session_state.get("profile"),
+            hygiene=st.session_state.get("hygiene"),
+            metadata=metadata, controls=controls,
+            generation_summary=st.session_state.get("generation_summary"),
+            validation=st.session_state.get("validation"),
+            intake_confirmed=st.session_state.get("intake_confirmed", False),
+            hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+            settings_reviewed=st.session_state.get("settings_reviewed", False),
+            metadata_status=st.session_state.get("metadata_status", "Draft"),
+            synthetic_ready=st.session_state.get("synthetic_df") is not None,
+            results_shared=bool(st.session_state.get("results_shared_at")),
+        )
 
     if current_step == 0:
         render_step_one(metadata)

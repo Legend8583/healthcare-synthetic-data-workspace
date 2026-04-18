@@ -1194,3 +1194,64 @@ def render_privacy_boundary_banner() -> None:
         '</div>'
     )
     st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ── Step 0 Upload Status ─────────────────────────────────────────────────────
+
+def render_upload_status_panel(intake_confirmed: bool, profile: dict | None) -> None:
+    """Render a clean, step-appropriate status panel for Step 0 (Upload Data)."""
+    if not intake_confirmed and profile is None:
+        border = "#004B8B"; badge_bg = "#EBF1F7"; badge_color = "#08467D"
+        label = "Awaiting source data"
+        recommendation = "Upload a CSV file to begin the governed workflow."
+        history = []
+    elif profile is not None and not intake_confirmed:
+        border = "#D68A00"; badge_bg = "#FFF6E3"; badge_color = "#9C6A17"
+        label = "Dataset loaded — confirm to register"
+        recommendation = "Review the upload summary and confirm the source package."
+        rows = profile.get("num_rows", 0)
+        cols = profile.get("num_columns", 0)
+        history = [
+            ("&#10003;", "#2E7040", "Source file parsed", f"{rows} rows, {cols} columns detected"),
+        ]
+    else:
+        border = "#2E7040"; badge_bg = "#EDF9F3"; badge_color = "#136B48"
+        label = "Source package registered"
+        recommendation = "Proceed to Scan Data. The agent will profile fields and detect hygiene issues."
+        rows = profile.get("num_rows", 0) if profile else 0
+        cols = profile.get("num_columns", 0) if profile else 0
+        history = [
+            ("&#10003;", "#2E7040", "Source file parsed", f"{rows} rows, {cols} columns detected"),
+            ("&#10003;", "#2E7040", "Intake confirmed", "Source package registered into workflow"),
+            ("&#9679;", "#004B8B", "Next: Scan Data", "Agent will scan for quality and sensitivity issues"),
+        ]
+
+    header = (
+        f'<div style="margin-bottom:0.5rem;">'
+        f'<div style="display:inline-block;padding:0.28rem 0.7rem;border-radius:999px;font-size:0.82rem;font-weight:700;background:{badge_bg};color:{badge_color};border:1px solid {border}33;">{label}</div>'
+        f'</div>'
+        f'<div style="font-size:0.88rem;color:#668097;line-height:1.5;margin-bottom:0.5rem;">'
+        f'<strong style="color:#2D3E50;">Next action:</strong> {recommendation}</div>'
+    )
+
+    history_html = ""
+    if history:
+        items = []
+        for icon, color, title, detail in history:
+            items.append(
+                f'<div style="display:flex;gap:8px;padding:0.3rem 0;border-bottom:1px solid rgba(214,226,236,0.3);">'
+                f'<span style="color:{color};font-size:0.8rem;flex-shrink:0;width:14px;text-align:center;">{icon}</span>'
+                f'<div style="min-width:0;">'
+                f'<div style="font-size:0.82rem;font-weight:600;color:#2D3E50;line-height:1.3;">{title}</div>'
+                f'<div style="font-size:0.76rem;color:#668097;line-height:1.35;">{detail}</div>'
+                f'</div></div>'
+            )
+        history_html = '<div style="margin-top:0.3rem;">' + "".join(items) + '</div>'
+
+    html_out = (
+        f'<div class="action-shell" style="border-left:3px solid {border};">'
+        '<h4>Agent Decision Log</h4>'
+        + header + history_html
+        + '</div>'
+    )
+    st.markdown(html_out, unsafe_allow_html=True)

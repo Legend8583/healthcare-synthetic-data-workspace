@@ -3991,12 +3991,15 @@ def render_header(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> N
             persist_shared_workspace_state()
             st.rerun()
     with queue_cols[1]:
+        # Invisible spacer label so button aligns vertically with selectbox
+        st.markdown("<div style='font-size:0.875rem;margin-bottom:0.25rem;visibility:hidden;'>&nbsp;</div>", unsafe_allow_html=True)
         if has_permission("upload") and st.button("New request", use_container_width=True):
             sync_active_request_snapshot()
             create_blank_request()
             st.session_state.current_step = 0
             st.rerun()
     with queue_cols[2]:
+        st.markdown("<div style='font-size:0.875rem;margin-bottom:0.25rem;visibility:hidden;'>&nbsp;</div>", unsafe_allow_html=True)
         clear_col, switch_col = st.columns(2, gap="small")
         if clear_col.button("Clear queue", use_container_width=True):
             schedule_request_queue_clear()

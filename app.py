@@ -652,34 +652,28 @@ def inject_styles() -> None:
             }
 
             .login-brand-card {
-                background: #FFFFFF;
-                border: none;
-                border-radius: 0;
-                padding: 0;
-                box-shadow: none;
-                min-height: auto;
+                background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,251,253,0.98));
+                border: 1px solid var(--line);
+                border-radius: 28px;
+                padding: 1.8rem 1.85rem;
+                box-shadow: var(--shadow);
+                min-height: 540px;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                text-align: center;
-                gap: 1.8rem;
+                justify-content: space-between;
             }
 
             .login-brand-lockup {
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                gap: 1.1rem;
-                max-width: 560px;
-                margin: 0 auto;
+                gap: 1rem;
             }
 
             .login-logo {
-                width: 440px;
-                max-width: 92%;
+                width: 290px;
+                max-width: 100%;
                 height: auto;
                 object-fit: contain;
-                margin-bottom: 0.5rem;
             }
 
             .login-kicker {
@@ -688,112 +682,131 @@ def inject_styles() -> None:
                 gap: 0.45rem;
                 width: fit-content;
                 border-radius: 999px;
-                padding: 0.3rem 0.78rem;
-                background: rgba(11, 94, 168, 0.06);
+                padding: 0.32rem 0.72rem;
+                background: rgba(11, 94, 168, 0.08);
                 color: var(--brand);
-                font-size: 0.72rem;
-                font-weight: 600;
-                letter-spacing: 0.1em;
+                font-size: 0.76rem;
+                font-weight: 700;
+                letter-spacing: 0.08em;
                 text-transform: uppercase;
-                border: 1px solid rgba(11, 94, 168, 0.1);
+                border: 1px solid rgba(11, 94, 168, 0.12);
             }
 
             .login-title {
-                font-size: 2.4rem;
-                font-weight: 600;
+                font-size: 2rem;
+                font-weight: 700;
                 line-height: 1.08;
-                letter-spacing: -0.02em;
                 color: var(--text);
                 margin: 0;
-                max-width: 560px;
+                max-width: 520px;
             }
 
             .login-subtitle {
                 color: var(--muted);
-                font-size: 1.02rem;
+                font-size: 1rem;
                 line-height: 1.55;
                 max-width: 520px;
-                margin: 0.35rem auto 0 auto;
-                font-weight: 400;
+                margin-top: 0.5rem;
             }
 
             .trust-badge-row {
                 display: flex;
                 flex-wrap: wrap;
-                justify-content: center;
-                gap: 0.5rem;
-                margin-top: 0.6rem;
+                gap: 0.7rem;
+                margin-top: 1.2rem;
             }
 
             .trust-badge {
                 display: inline-flex;
                 align-items: center;
                 border-radius: 999px;
-                padding: 0.34rem 0.78rem;
-                background: #F5F7FA;
-                border: 1px solid rgba(0,0,0,0.05);
-                color: #475569;
-                font-size: 0.78rem;
-                font-weight: 500;
+                padding: 0.44rem 0.78rem;
+                background: var(--surface);
+                border: 1px solid var(--line);
+                color: var(--text);
+                font-size: 0.86rem;
+                font-weight: 600;
             }
 
             .group-strip {
-                display: none;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 0.75rem;
+                margin-top: 1.4rem;
             }
 
-            .group-chip,
-            .group-chip-label,
-            .group-chip-value,
+            .group-chip {
+                background: rgba(11, 94, 168, 0.04);
+                border: 1px solid rgba(11, 94, 168, 0.1);
+                border-radius: 18px;
+                padding: 0.85rem 0.95rem;
+            }
+
+            .group-chip-label {
+                font-size: 0.74rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                font-weight: 700;
+                color: var(--brand);
+                margin-bottom: 0.35rem;
+            }
+
+            .group-chip-value {
+                color: var(--text);
+                font-size: 0.92rem;
+                line-height: 1.45;
+                font-weight: 600;
+            }
+
             .group-chip-meta {
-                display: none;
+                color: var(--muted);
+                font-size: 0.88rem;
+                line-height: 1.5;
+                margin-top: 0.35rem;
             }
 
             .login-card {
-                background: #FFFFFF;
-                border: 1px solid rgba(0,0,0,0.06);
-                border-radius: 20px;
-                padding: 2rem 1.9rem 1.8rem 1.9rem;
-                box-shadow: 0 2px 16px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.03);
-                min-height: auto;
+                background: var(--surface);
+                border: 1px solid var(--line);
+                border-radius: 24px;
+                padding: 1.35rem 1.4rem 1.2rem 1.4rem;
+                box-shadow: var(--shadow);
+                min-height: 540px;
                 display: flex;
                 flex-direction: column;
-                max-width: 420px;
-                margin: 0 auto;
+                justify-content: space-between;
             }
 
             .login-card-header {
-                margin-bottom: 1.4rem;
-                text-align: center;
+                margin-bottom: 1rem;
             }
 
             .login-card-title {
                 margin: 0;
                 color: var(--text);
-                font-size: 1.65rem;
-                font-weight: 600;
+                font-size: 1.45rem;
+                font-weight: 700;
                 line-height: 1.15;
-                letter-spacing: -0.01em;
             }
 
             .login-card-subtitle {
-                margin-top: 0.4rem;
+                margin-top: 0.45rem;
                 color: var(--muted);
-                font-size: 0.92rem;
+                font-size: 0.94rem;
                 line-height: 1.5;
             }
 
             .environment-tag {
                 display: inline-flex;
                 align-items: center;
-                margin-bottom: 0;
+                margin-bottom: 0.8rem;
                 border-radius: 999px;
-                padding: 0.3rem 0.78rem;
-                background: rgba(25, 203, 197, 0.08);
+                padding: 0.34rem 0.72rem;
+                background: rgba(25, 203, 197, 0.1);
                 color: #0d6b69;
-                border: 1px solid rgba(25, 203, 197, 0.14);
-                font-size: 0.72rem;
-                font-weight: 600;
-                letter-spacing: 0.04em;
+                border: 1px solid rgba(25, 203, 197, 0.16);
+                font-size: 0.78rem;
+                font-weight: 700;
             }
 
             .login-links {
@@ -3520,132 +3533,104 @@ def render_stakeholder_group_overview() -> None:
 
 def render_login_screen() -> None:
     logo_uri = load_logo_data_uri()
-
-    # Apple-style centered layout: single column, logo + title top, form below
-    st.markdown(
-        """
-        <style>
-            /* Ensure form inputs are fully visible with proper spacing */
-            div[data-testid="stForm"] .stTextInput > div > div > input,
-            div[data-testid="stForm"] .stSelectbox > div > div {
-                padding: 0.65rem 0.85rem !important;
-                font-size: 0.95rem !important;
-                line-height: 1.45 !important;
-                min-height: 44px !important;
-                box-sizing: border-box !important;
-            }
-            div[data-testid="stForm"] .stTextInput,
-            div[data-testid="stForm"] .stSelectbox {
-                margin-bottom: 0.75rem !important;
-            }
-            div[data-testid="stForm"] label {
-                font-size: 0.88rem !important;
-                font-weight: 500 !important;
-                color: #475569 !important;
-                margin-bottom: 0.3rem !important;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Outer top spacer + centered container
-    st.markdown('<div style="height:2.5rem;"></div>', unsafe_allow_html=True)
-
-    # Top section: brand (logo + title + subtitle) — full width, centered
-    st.markdown(
-        f"""
-        <div class="login-brand-card">
-            <div class="login-brand-lockup">
-                {'<img src="' + logo_uri + '" class="login-logo" alt="Southlake Health logo" />' if logo_uri else ''}
-                <div class="environment-tag">Agentic Synthetic Data Workspace</div>
-                <h1 class="login-title">Sign in to your workspace</h1>
-                <div class="login-subtitle">Governed synthetic data creation with metadata transparency and controlled release for hospital teams.</div>
-                <div class="trust-badge-row">
-                    <div class="trust-badge">Role-based access</div>
-                    <div class="trust-badge">Audit logging</div>
-                    <div class="trust-badge">Controlled release</div>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div style="height:2rem;"></div>', unsafe_allow_html=True)
-
-    # Center the form using 3-column layout with narrow middle
-    form_outer = st.columns([1, 1.3, 1])
-    with form_outer[1]:
-        with st.form("login_form", clear_on_submit=False):
-            work_email = st.text_input(
-                "Work email",
-                placeholder="name@southlake.ca",
-                key="login_email_input",
-            )
-            password = st.text_input(
-                "Password",
-                type="password",
-                key="login_password_input",
-            )
-            role = st.selectbox(
-                "Access profile",
-                options=list(ROLE_CONFIGS.keys()),
-                format_func=role_with_group,
-                key="login_role_select",
-            )
-            submitted = st.form_submit_button("Sign in", type="primary", use_container_width=True)
-
-        if submitted:
-            email_value = work_email.strip().lower()
-            email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
-            if not email_value:
-                st.error("Enter your work email to continue.")
-            elif not email_valid:
-                st.error("Enter a valid work email address.")
-            elif password != ROLE_CONFIGS[role]["password"]:
-                st.error("Password did not match the selected access profile.")
-            else:
-                st.session_state.authenticated = True
-                st.session_state.current_role = role
-                st.session_state.current_user_email = email_value
-                record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
-                ensure_dataset_loaded()
-                metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-                controls = st.session_state.controls
-                st.session_state.current_step = default_step_for_role(metadata, controls, role)
-                st.rerun()
-
-        # Demo quick-access + helper text (minimal, Apple-style)
+    stakeholder_html = build_stakeholder_group_overview_html()
+    intro_col, form_col = st.columns([1.08, 0.92], gap="large")
+    with intro_col:
         st.markdown(
-            """
-            <div style="text-align:center;margin-top:1rem;">
-                <div style="font-size:0.78rem;color:#94A3B8;margin-bottom:0.5rem;">
-                    Demo credential for all profiles: <code style="background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.76rem;">test</code>
+            f"""
+            <div class="login-brand-card">
+                <div class="environment-tag">Southlake Health — Agentic Synthetic Data Workspace</div>
+                <div class="login-brand-lockup">
+                    {'<img src="' + logo_uri + '" class="login-logo" alt="Southlake Health logo" />' if logo_uri else ''}
+                    <div class="login-kicker">Authorized access only</div>
+                    <h1 class="login-title">{APP_TITLE}</h1>
+                    <div class="login-subtitle">Agentic synthetic data creation with governed review, metadata transparency, and controlled release for hospital teams.</div>
+                    <div class="trust-badge-row">
+                        <div class="trust-badge">Role-Based Access</div>
+                        <div class="trust-badge">Audit Logging</div>
+                        <div class="trust-badge">Controlled Release</div>
+                    </div>
                 </div>
+                {stakeholder_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        quick_cols = st.columns(2)
-        if quick_cols[0].button("Demo: Data Analyst", use_container_width=True):
-            quick_sign_in("Data Analyst")
-        if quick_cols[1].button("Demo: Manager / Reviewer", use_container_width=True):
-            quick_sign_in("Manager / Reviewer")
+    with form_col:
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div class="login-card-header">
+                    <div class="login-card-title">Sign in</div>
+                    <div class="login-card-subtitle">Use your hospital workspace credentials to access governed synthetic data requests.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-        st.markdown(
-            """
-            <div style="text-align:center;margin-top:1.2rem;font-size:0.8rem;color:#94A3B8;">
-                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request" style="color:#0B5EA8;text-decoration:none;margin-right:1.2rem;">Forgot password?</a>
-                <a href="mailto:accessrequests@southlake.ca?subject=Healthcare%20Synthetic%20Data%20Workspace%20Access" style="color:#0B5EA8;text-decoration:none;">Request access</a>
-            </div>
-            <div style="text-align:center;margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid rgba(0,0,0,0.06);font-size:0.72rem;color:#94A3B8;line-height:1.5;">
-                Authorized users only. Access is role-based and activity is logged for security and compliance.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            with st.form("login_form", clear_on_submit=False):
+                work_email = st.text_input(
+                    "Work Email",
+                    placeholder="name@southlake.ca",
+                    key="login_email_input",
+                )
+                show_password = st.checkbox("Show password", key="login_show_password")
+                password = st.text_input(
+                    "Password",
+                    type="default" if show_password else "password",
+                    key="login_password_input",
+                )
+                role = st.selectbox(
+                    "Access Profile",
+                    options=list(ROLE_CONFIGS.keys()),
+                    format_func=role_with_group,
+                    key="login_role_select",
+                )
+                st.caption(f"Selected group: `{ROLE_TO_GROUP.get(role, 'Users')}`")
+                submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+
+            if submitted:
+                email_value = work_email.strip().lower()
+                email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
+                if not email_value:
+                    st.error("Enter your work email to continue.")
+                elif not email_valid:
+                    st.error("Enter a valid work email address.")
+                elif password != ROLE_CONFIGS[role]["password"]:
+                    st.error("Password did not match the selected access profile.")
+                else:
+                    st.session_state.authenticated = True
+                    st.session_state.current_role = role
+                    st.session_state.current_user_email = email_value
+                    record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
+                    ensure_dataset_loaded()
+                    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+                    controls = st.session_state.controls
+                    st.session_state.current_step = default_step_for_role(metadata, controls, role)
+                    st.rerun()
+
+            st.markdown(
+                """
+                <div class="login-links">
+                    <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
+                    <a href="mailto:accessrequests@southlake.ca?subject=Healthcare%20Synthetic%20Data%20Workspace%20Access">Request access</a>
+                </div>
+                <div class="login-divider"></div>
+                <div class="security-notice">
+                    <strong>Security notice</strong>
+                    Authorized users only. Access is role-based and activity may be monitored and logged for security and compliance purposes.
+                </div>
+                <div class="login-helper">Demo environment credential for all access profiles: <code>test</code></div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown("**Quick demo access**")
+            quick_cols = st.columns(2)
+            if quick_cols[0].button("Enter as Data Analyst", use_container_width=True):
+                quick_sign_in("Data Analyst")
+            if quick_cols[1].button("Enter as Manager / Reviewer", use_container_width=True):
+                quick_sign_in("Manager / Reviewer")
 
 
 def render_sidebar(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:

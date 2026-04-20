@@ -4285,16 +4285,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
                     st.rerun()
 
     # ─────────────────────────────────────────────────────────────
-    # D. AGENT DECISION LOG (step-0 variant — positioned after the primary task area)
-    # ─────────────────────────────────────────────────────────────
-    st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
-    render_upload_status_panel(
-        intake_confirmed=st.session_state.get("intake_confirmed", False),
-        profile=st.session_state.get("profile"),
-    )
-
-    # ─────────────────────────────────────────────────────────────
-    # E. INTAKE SUMMARY (only after upload)
+    # D. INTAKE SUMMARY (only after upload)
     # ─────────────────────────────────────────────────────────────
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))

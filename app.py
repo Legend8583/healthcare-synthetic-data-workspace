@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import altair as alt
 import streamlit as st
 
 from src.cleaner import apply_hygiene_fixes
@@ -1289,11 +1290,10 @@ def inject_styles() -> None:
             .st-key-upload_task_panel,
             .st-key-submission_readiness_panel,
             .st-key-intake_summary_panel,
-            .st-key-hygiene_summary_panel,
-            .st-key-findings_remediation_panel,
-            .st-key-remediation_preview_panel,
-            .st-key-scan_context_panel,
-            .st-key-last_remediation_panel {
+            .st-key-dataset_shape_panel,
+            .st-key-data_preview_panel,
+            .st-key-missing_heatmap_panel,
+            .st-key-field_distributions_panel {
                 background: var(--surface) !important;
                 border: 1px solid var(--line) !important;
                 border-radius: 20px !important;
@@ -1313,31 +1313,30 @@ def inject_styles() -> None:
                 padding-bottom: 1.45rem !important;
             }
 
-            .st-key-hygiene_summary_panel {
+            .st-key-dataset_shape_panel {
                 padding-bottom: 1.4rem !important;
             }
 
-            .st-key-findings_remediation_panel {
-                padding-bottom: 1.2rem !important;
+            .st-key-data_preview_panel {
+                padding-bottom: 1rem !important;
             }
 
-            .st-key-remediation_preview_panel {
+            .st-key-missing_heatmap_panel {
                 padding-bottom: 1.1rem !important;
             }
 
-            .st-key-scan_context_panel {
-                padding-bottom: 1rem !important;
+            .st-key-field_distributions_panel {
+                padding-bottom: 1.2rem !important;
             }
 
             .st-key-request_details_panel > div,
             .st-key-upload_task_panel > div,
             .st-key-submission_readiness_panel > div,
             .st-key-intake_summary_panel > div,
-            .st-key-hygiene_summary_panel > div,
-            .st-key-findings_remediation_panel > div,
-            .st-key-remediation_preview_panel > div,
-            .st-key-scan_context_panel > div,
-            .st-key-last_remediation_panel > div {
+            .st-key-dataset_shape_panel > div,
+            .st-key-data_preview_panel > div,
+            .st-key-missing_heatmap_panel > div,
+            .st-key-field_distributions_panel > div {
                 background: transparent !important;
             }
 
@@ -4565,130 +4564,156 @@ def render_step_two() -> None:
                 f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{len(missing_rows)} field(s) with missing values</div>',
                 unsafe_allow_html=True,
             )
-            st.bar_chart(missing_df.set_index("Field"), use_container_width=True, height=max(180, min(400, 30 * len(missing_rows) + 60)))
-
-    # ─────────────────────────────────────────────────────────────
-    # E. NUMERIC FIELD DISTRIBUTIONS
-    # ─────────────────────────────────────────────────────────────
-    if role_columns["numeric"]:
-        with st.container(border=True, key="numeric_distributions_panel"):
-            st.markdown(
-                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Numeric fields</div>'
-                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Distributions across {len(role_columns["numeric"])} numeric field(s)</div>',
-                unsafe_allow_html=True,
+            chart = (
+                alt.Chart(missing_df)
+                .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#0b5ea8")
+                .encode(
+                    y=alt.Y("Field:N", sort="-x", axis=alt.Axis(labelLimit=200, labelAngle=0, title=None)),
+                    x=alt.X("Missing %:Q", title="Missing %", axis=alt.Axis(labelAngle=0)),
+                    tooltip=[alt.Tooltip("Field:N"), alt.Tooltip("Missing %:Q", format=".2f")],
+                )
+                .properties(height=max(180, min(400, 32 * len(missing_rows) + 40)))
+                .configure_view(strokeWidth=0)
+                .configure_axis(labelFontSize=12, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
             )
-
-            # Field selector
-            selected_numeric = st.selectbox(
-                "Select a numeric field to visualize",
-                options=role_columns["numeric"],
-                key="num_field_selector",
-            )
-
-            details = columns_profile[selected_numeric]
-            numeric_values = pd.to_numeric(source_df[selected_numeric], errors="coerce").dropna()
-
-            # Summary stats capsules for the selected field
-            stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
-            stats_html += _stat_capsule("Min", f"{details.get('min', 0):g}", "Lowest value")
-            stats_html += _stat_capsule("Median", f"{details.get('median', 0):g}", f"Q1: {details.get('q1', 0):g} · Q3: {details.get('q3', 0):g}")
-            stats_html += _stat_capsule("Mean", f"{details.get('mean', 0):g}", f"Std: {details.get('std', 0):g}")
-            stats_html += _stat_capsule("Max", f"{details.get('max', 0):g}", "Highest value")
-            stats_html += '</div>'
-            st.markdown(stats_html, unsafe_allow_html=True)
-
-            # Histogram
-            if not numeric_values.empty:
-                # Build histogram bins
-                bin_count = min(30, max(10, int(len(numeric_values) ** 0.5)))
-                try:
-                    bins = pd.cut(numeric_values, bins=bin_count)
-                    hist = bins.value_counts().sort_index()
-                    # Use midpoint of each bin as x label
-                    midpoints = [round((interval.left + interval.right) / 2, 2) for interval in hist.index]
-                    chart_df = pd.DataFrame({"Bin midpoint": midpoints, "Count": hist.values})
-                    st.bar_chart(chart_df.set_index("Bin midpoint"), use_container_width=True, height=260)
-                except Exception:
-                    st.info("Unable to compute histogram for this field.")
+            st.altair_chart(chart, use_container_width=True)
 
     # ─────────────────────────────────────────────────────────────
-    # F. CATEGORICAL FIELD TOP VALUES
+    # E. FIELD DISTRIBUTIONS — tabbed view (Numeric / Categorical / Dates)
     # ─────────────────────────────────────────────────────────────
     cat_cols = role_columns["categorical"] + role_columns["binary"]
-    if cat_cols:
-        with st.container(border=True, key="categorical_top_values_panel"):
+    date_cols = role_columns["date"]
+    num_cols = role_columns["numeric"]
+
+    if num_cols or cat_cols or date_cols:
+        with st.container(border=True, key="field_distributions_panel"):
             st.markdown(
-                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Categorical fields</div>'
-                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Top value distribution across {len(cat_cols)} categorical field(s)</div>',
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Field distributions</div>'
+                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Drill into specific fields to inspect their shape</div>',
                 unsafe_allow_html=True,
             )
 
-            selected_cat = st.selectbox(
-                "Select a categorical field to visualize",
-                options=cat_cols,
-                key="cat_field_selector",
-            )
-            details = columns_profile[selected_cat]
-            top_values = details.get("top_values", {})
+            # Build tabs dynamically based on what column types exist
+            tab_labels = []
+            if num_cols:
+                tab_labels.append(f"Numeric · {len(num_cols)}")
+            if cat_cols:
+                tab_labels.append(f"Categorical · {len(cat_cols)}")
+            if date_cols:
+                tab_labels.append(f"Dates · {len(date_cols)}")
+            tabs = st.tabs(tab_labels)
+            tab_idx = 0
 
-            if top_values:
-                # Summary capsules
-                stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
-                stats_html += _stat_capsule("Unique values", str(details["unique_count"]), f"Completeness: {details['completeness_score']:.1f}%")
-                stats_html += _stat_capsule("Top value", list(top_values.keys())[0] if top_values else "—", f"{list(top_values.values())[0]:.1f}%" if top_values else "—")
-                stats_html += _stat_capsule("Examples", ", ".join(details.get("examples", [])[:2]) or "—", "Sampled from non-null values")
-                stats_html += '</div>'
-                st.markdown(stats_html, unsafe_allow_html=True)
+            # ── Numeric tab ──
+            if num_cols:
+                with tabs[tab_idx]:
+                    selected_numeric = st.selectbox(
+                        "Select a numeric field",
+                        options=num_cols,
+                        key="num_field_selector",
+                        label_visibility="collapsed",
+                    )
+                    details = columns_profile[selected_numeric]
+                    numeric_values = pd.to_numeric(source_df[selected_numeric], errors="coerce").dropna()
 
-                # Top values bar chart
-                cat_df = pd.DataFrame(
-                    [{"Value": k, "Share (%)": v} for k, v in top_values.items()]
-                ).sort_values("Share (%)", ascending=False)
-                st.bar_chart(cat_df.set_index("Value"), use_container_width=True, height=max(180, min(350, 35 * len(cat_df) + 60)))
-            else:
-                st.info("No value distribution available for this field.")
+                    stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.6rem 0 0.8rem 0;">'
+                    stats_html += _stat_capsule("Min", f"{details.get('min', 0):g}", "Lowest value")
+                    stats_html += _stat_capsule("Median", f"{details.get('median', 0):g}", f"Q1: {details.get('q1', 0):g} · Q3: {details.get('q3', 0):g}")
+                    stats_html += _stat_capsule("Mean", f"{details.get('mean', 0):g}", f"Std: {details.get('std', 0):g}")
+                    stats_html += _stat_capsule("Max", f"{details.get('max', 0):g}", "Highest value")
+                    stats_html += '</div>'
+                    st.markdown(stats_html, unsafe_allow_html=True)
+
+                    if not numeric_values.empty:
+                        bin_count = min(30, max(10, int(len(numeric_values) ** 0.5)))
+                        try:
+                            hist_df = pd.DataFrame({"value": numeric_values.values})
+                            hist_chart = (
+                                alt.Chart(hist_df)
+                                .mark_bar(color="#0b5ea8")
+                                .encode(
+                                    x=alt.X("value:Q", bin=alt.Bin(maxbins=bin_count), title=selected_numeric, axis=alt.Axis(labelAngle=0)),
+                                    y=alt.Y("count():Q", title="Count", axis=alt.Axis(labelAngle=0)),
+                                    tooltip=[alt.Tooltip("value:Q", bin=alt.Bin(maxbins=bin_count), title="Range"), alt.Tooltip("count():Q", title="Count")],
+                                )
+                                .properties(height=260)
+                                .configure_view(strokeWidth=0)
+                                .configure_axis(labelFontSize=11, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
+                            )
+                            st.altair_chart(hist_chart, use_container_width=True)
+                        except Exception:
+                            st.info("Unable to compute histogram for this field.")
+                tab_idx += 1
+
+            # ── Categorical tab ──
+            if cat_cols:
+                with tabs[tab_idx]:
+                    selected_cat = st.selectbox(
+                        "Select a categorical field",
+                        options=cat_cols,
+                        key="cat_field_selector",
+                        label_visibility="collapsed",
+                    )
+                    details = columns_profile[selected_cat]
+                    top_values = details.get("top_values", {})
+
+                    if top_values:
+                        stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.6rem 0 0.8rem 0;">'
+                        stats_html += _stat_capsule("Unique values", str(details["unique_count"]), f"Completeness: {details['completeness_score']:.1f}%")
+                        stats_html += _stat_capsule("Top value", list(top_values.keys())[0] if top_values else "—", f"{list(top_values.values())[0]:.1f}%" if top_values else "—")
+                        stats_html += _stat_capsule("Examples", ", ".join(details.get("examples", [])[:2]) or "—", "Sampled from non-null values")
+                        stats_html += '</div>'
+                        st.markdown(stats_html, unsafe_allow_html=True)
+
+                        cat_df = pd.DataFrame(
+                            [{"Value": str(k), "Share (%)": v} for k, v in top_values.items()]
+                        ).sort_values("Share (%)", ascending=False)
+                        cat_chart = (
+                            alt.Chart(cat_df)
+                            .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#0b5ea8")
+                            .encode(
+                                y=alt.Y("Value:N", sort="-x", axis=alt.Axis(labelLimit=200, labelAngle=0, title=None)),
+                                x=alt.X("Share (%):Q", title="Share (%)", axis=alt.Axis(labelAngle=0)),
+                                tooltip=[alt.Tooltip("Value:N"), alt.Tooltip("Share (%):Q", format=".2f")],
+                            )
+                            .properties(height=max(180, min(350, 38 * len(cat_df) + 30)))
+                            .configure_view(strokeWidth=0)
+                            .configure_axis(labelFontSize=12, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
+                        )
+                        st.altair_chart(cat_chart, use_container_width=True)
+                    else:
+                        st.info("No value distribution available for this field.")
+                tab_idx += 1
+
+            # ── Dates tab ──
+            if date_cols:
+                with tabs[tab_idx]:
+                    date_rows = []
+                    for col in date_cols:
+                        d = columns_profile[col]
+                        date_rows.append({
+                            "Field": col,
+                            "Earliest": d.get("min", "—"),
+                            "Latest": d.get("max", "—"),
+                            "Completeness %": d["completeness_score"],
+                            "Unique dates": d["unique_count"],
+                        })
+                    st.dataframe(pd.DataFrame(date_rows), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────
-    # G. DATE FIELD RANGES
+    # F. ALL FIELDS REFERENCE (collapsible, lightweight)
     # ─────────────────────────────────────────────────────────────
-    if role_columns["date"]:
-        with st.container(border=True, key="date_ranges_panel"):
-            st.markdown(
-                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Date fields</div>'
-                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Coverage across {len(role_columns["date"])} date field(s)</div>',
-                unsafe_allow_html=True,
-            )
-            date_rows = []
-            for col in role_columns["date"]:
-                d = columns_profile[col]
-                date_rows.append({
-                    "Field": col,
-                    "Earliest": d.get("min", "—"),
-                    "Latest": d.get("max", "—"),
-                    "Completeness %": d["completeness_score"],
-                    "Unique dates": d["unique_count"],
-                })
-            st.dataframe(pd.DataFrame(date_rows), use_container_width=True, hide_index=True)
-
-    # ─────────────────────────────────────────────────────────────
-    # H. FULL FIELD PROFILE TABLE (all columns reference)
-    # ─────────────────────────────────────────────────────────────
-    with st.container(border=True, key="field_profile_panel"):
-        st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">All fields</div>'
-            f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Reference profile for all {total_cols} field(s)</div>',
-            unsafe_allow_html=True,
-        )
-        profile_rows = []
-        for column, details in columns_profile.items():
-            profile_rows.append({
-                "Field": column,
-                "Type": details["semantic_role"],
-                "Missing %": details["missing_pct"],
-                "Completeness %": details["completeness_score"],
-                "Unique": details["unique_count"],
-                "Examples": ", ".join(details.get("examples", [])[:3]),
-            })
+    profile_rows = []
+    for column, details in columns_profile.items():
+        profile_rows.append({
+            "Field": column,
+            "Type": details["semantic_role"],
+            "Missing %": details["missing_pct"],
+            "Completeness %": details["completeness_score"],
+            "Unique": details["unique_count"],
+            "Examples": ", ".join(details.get("examples", [])[:3]),
+        })
+    with st.expander(f"All fields reference table · {total_cols} fields", expanded=False):
         st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────

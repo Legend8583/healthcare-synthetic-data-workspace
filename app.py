@@ -4078,28 +4078,28 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"
 
     # ─────────────────────────────────────────────────────────────
-    # A. COMPACT STATUS STRIP
+    # A. STATUS STRIP — matches section-shell styling (white bg, --line border, --text color, --brand kickers)
     # ─────────────────────────────────────────────────────────────
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.65rem 1rem;background:#F5F9FC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:1.1rem;flex-wrap:wrap;">
-            <div style="display:flex;align-items:baseline;gap:0.4rem;">
-                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Request</span>
-                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;font-family:ui-monospace,monospace;">{active_request}</span>
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #d6e2ec;border-radius:20px;box-shadow:0 10px 24px rgba(8,70,125,0.08);margin-bottom:1rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Request</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;font-family:ui-monospace,monospace;">{active_request}</span>
             </div>
-            <div style="width:1px;height:18px;background:#CBD5E1;"></div>
-            <div style="display:flex;align-items:baseline;gap:0.4rem;">
-                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Role</span>
-                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;">{st.session_state.current_role}</span>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Role</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{st.session_state.current_role}</span>
             </div>
-            <div style="width:1px;height:18px;background:#CBD5E1;"></div>
-            <div style="display:flex;align-items:baseline;gap:0.4rem;">
-                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Step</span>
-                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;">1 of {len(STEP_CONFIG)}</span>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">1 of {len(STEP_CONFIG)}</span>
             </div>
-            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.25rem 0.65rem;background:{status_chip_bg};border-radius:999px;">
+            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.28rem 0.7rem;background:{status_chip_bg};border-radius:999px;">
                 <span style="width:6px;height:6px;border-radius:50%;background:{status_chip_color};"></span>
-                <span style="font-size:0.78rem;color:{status_chip_color};font-weight:600;">{status_value}</span>
+                <span style="font-size:0.8rem;color:{status_chip_color};font-weight:700;">{status_value}</span>
             </div>
         </div>
         """,
@@ -4107,17 +4107,13 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     )
 
     # ─────────────────────────────────────────────────────────────
-    # B. REQUEST DETAILS (moved above upload, full-width card)
+    # B. REQUEST DETAILS
     # ─────────────────────────────────────────────────────────────
     with st.container(border=True):
         st.markdown(
             """
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.1rem;">
-                Request details
-            </div>
-            <div style="font-size:1rem;font-weight:600;color:#0F172A;margin-bottom:0.75rem;">
-                Project purpose
-            </div>
+            <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Request details</div>
+            <div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Project purpose</div>
             """,
             unsafe_allow_html=True,
         )
@@ -4133,7 +4129,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             render_role_restriction("This role can view the request summary but cannot edit request details.")
 
     # ─────────────────────────────────────────────────────────────
-    # C. TWO-COLUMN TASK AREA — both columns in consistent bordered containers
+    # C. TWO-COLUMN TASK AREA — both columns in parallel bordered containers
     # ─────────────────────────────────────────────────────────────
     task_cols = st.columns([1.35, 1], gap="large")
 
@@ -4141,17 +4137,13 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     with task_cols[0]:
         with st.container(border=True):
             if not has_data:
-                # EMPTY STATE header
                 st.markdown(
                     """
-                    <div style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.3rem 0.7rem;background:rgba(11,94,168,0.08);border-radius:999px;margin-bottom:0.75rem;">
-                        <span style="width:6px;height:6px;border-radius:50%;background:#0B5EA8;"></span>
-                        <span style="font-size:0.72rem;font-weight:700;color:#0B5EA8;text-transform:uppercase;letter-spacing:0.06em;">Primary action</span>
-                    </div>
-                    <h3 style="font-size:1.2rem;font-weight:600;color:#0F172A;margin:0 0 0.35rem 0;letter-spacing:-0.01em;line-height:1.25;">
+                    <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Primary action</div>
+                    <div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.35rem;line-height:1.3;">
                         Start by uploading your source dataset
-                    </h3>
-                    <p style="font-size:0.88rem;color:#475569;line-height:1.55;margin:0 0 1rem 0;">
+                    </div>
+                    <p style="font-size:0.9rem;color:#668097;line-height:1.55;margin:0 0 1rem 0;">
                         Drop a CSV file from Southlake\'s operational system, or click to browse.
                         The workspace will extract metadata and flag sensitive fields automatically.
                     </p>
@@ -4159,15 +4151,20 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
                     unsafe_allow_html=True,
                 )
             else:
-                # UPLOADED STATE — compact success banner
+                st.markdown(
+                    """
+                    <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Source dataset</div>
+                    <div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Dataset loaded</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 st.markdown(
                     f"""
-                    <div style="background:#EDF9F3;border:1px solid #B8E3CC;border-radius:10px;padding:0.9rem 1.1rem;margin-bottom:0.9rem;display:flex;align-items:center;gap:0.9rem;">
+                    <div style="background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;padding:0.9rem 1.1rem;margin-bottom:0.9rem;display:flex;align-items:center;gap:0.9rem;">
                         <div style="flex:0 0 34px;height:34px;border-radius:9px;background:#136B48;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">&#10003;</div>
                         <div style="flex:1;min-width:0;">
-                            <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.1rem;">Dataset loaded</div>
-                            <div style="font-size:0.9rem;color:#0F172A;font-weight:600;">{current_dataset_label()}</div>
-                            <div style="font-size:0.76rem;color:#475569;margin-top:0.1rem;">
+                            <div style="font-size:0.9rem;color:#17324d;font-weight:600;">{current_dataset_label()}</div>
+                            <div style="font-size:0.78rem;color:#668097;margin-top:0.15rem;">
                                 {format_file_size(st.session_state.get("source_file_size")) or "size unknown"}
                                 &middot; {st.session_state.profile['summary']['rows']:,} rows
                                 &middot; {st.session_state.profile['summary']['columns']} columns
@@ -4196,7 +4193,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
                 st.markdown(
                     """
-                    <div style="display:flex;gap:1rem;margin-top:0.6rem;font-size:0.76rem;color:#668097;flex-wrap:wrap;">
+                    <div style="display:flex;gap:1rem;margin-top:0.6rem;font-size:0.78rem;color:#668097;flex-wrap:wrap;">
                         <span>&#128196; CSV format only</span>
                         <span>&#9881;&#65039; Headers in first row</span>
                         <span>&#128274; Source never leaves governance boundary</span>
@@ -4219,7 +4216,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             if completed_count == total:
                 progress_color = "#136B48"
             elif completed_count > 0:
-                progress_color = "#0B5EA8"
+                progress_color = "#0b5ea8"
             else:
                 progress_color = "#94A3B8"
 
@@ -4227,14 +4224,14 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             for label, done in checklist:
                 if done:
                     icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;">&#10003;</span>'
-                    label_style = "color:#475569;text-decoration:line-through;text-decoration-color:#B8C5D2;"
+                    label_style = "color:#668097;text-decoration:line-through;text-decoration-color:#B8C5D2;"
                 else:
-                    icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#FFFFFF;border:1.5px solid #CBD5E1;display:inline-block;"></span>'
-                    label_style = "color:#0F172A;font-weight:500;"
+                    icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#FFFFFF;border:1.5px solid #d6e2ec;display:inline-block;"></span>'
+                    label_style = "color:#17324d;font-weight:500;"
                 checklist_items_html += (
                     f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.55rem;">'
                     f'{icon_html}'
-                    f'<span style="font-size:0.88rem;{label_style}">{label}</span>'
+                    f'<span style="font-size:0.9rem;{label_style}">{label}</span>'
                     f'</div>'
                 )
 
@@ -4251,20 +4248,19 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
             st.markdown(
                 f"""
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem;">
-                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;">Submission readiness</div>
-                    <div style="font-size:0.78rem;font-weight:600;color:{progress_color};">{completed_count} of {total}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.3rem;">
+                    <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;">Submission readiness</div>
+                    <div style="font-size:0.82rem;font-weight:600;color:{progress_color};">{completed_count} of {total}</div>
                 </div>
-                <div style="width:100%;height:6px;background:#F1F5F9;border-radius:999px;margin-bottom:1rem;overflow:hidden;">
+                <div style="width:100%;height:6px;background:#f1f5f9;border-radius:999px;margin-bottom:1rem;overflow:hidden;">
                     <div style="width:{progress_pct}%;height:100%;background:{progress_color};border-radius:999px;transition:width 0.3s ease;"></div>
                 </div>
                 {checklist_items_html}
-                <div style="font-size:0.8rem;color:{helper_color};margin-top:0.3rem;margin-bottom:0.8rem;line-height:1.45;">{helper_msg}</div>
+                <div style="font-size:0.82rem;color:{helper_color};margin-top:0.3rem;margin-bottom:0.8rem;line-height:1.5;">{helper_msg}</div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            # Submit button inside the same bordered container
             if st.session_state.intake_confirmed:
                 st.success("Request entered the governed flow.")
                 if st.button("Continue to Scan Source Data", type="primary", use_container_width=True):
@@ -4285,7 +4281,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
                     st.rerun()
 
     # ─────────────────────────────────────────────────────────────
-    # D. INTAKE SUMMARY (only after upload)
+    # D. INTAKE SUMMARY (only after upload) — wrapped in matching container
     # ─────────────────────────────────────────────────────────────
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
@@ -4294,39 +4290,40 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         else:
             sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
 
-        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#08467D", bg: str = "#EBF1F7") -> str:
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
             return (
-                f'<div style="flex:1;min-width:140px;padding:0.8rem 1rem;background:{bg};'
-                f'border:1px solid {accent}22;border-radius:10px;">'
-                f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{accent};margin-bottom:0.2rem;">{kicker}</div>'
-                f'<div style="font-size:1.35rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
-                f'<div style="font-size:0.74rem;color:#668097;margin-top:0.15rem;line-height:1.35;">{detail}</div>'
+                f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
+                f'border:1px solid #d6e2ec;border-radius:12px;">'
+                f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
+                f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
+                f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
                 f'</div>'
             )
 
-        st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
-        rows_val = f"{st.session_state.profile['summary']['rows']:,}"
-        cols_val = str(st.session_state.profile['summary']['columns'])
-        intake_html = (
-            '<div style="margin-bottom:0.5rem;font-size:0.82rem;font-weight:600;color:#668097;text-transform:uppercase;letter-spacing:0.06em;">Dataset intake summary</div>'
-            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
-            + _stat_capsule("Rows", rows_val, "Loaded from CSV")
-            + _stat_capsule("Columns", cols_val, "Fields detected")
-            + _stat_capsule(
-                "Sensitive fields",
-                str(sensitive_count),
-                "Flagged for review" if sensitive_count > 0 else "No PHI detected",
-                accent=sens_accent,
-                bg=sens_bg,
+        with st.container(border=True):
+            rows_val = f"{st.session_state.profile['summary']['rows']:,}"
+            cols_val = str(st.session_state.profile['summary']['columns'])
+            intake_html = (
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Dataset intake summary</div>'
+                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Source package overview</div>'
+                '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+                + _stat_capsule("Rows", rows_val, "Loaded from CSV")
+                + _stat_capsule("Columns", cols_val, "Fields detected")
+                + _stat_capsule(
+                    "Sensitive fields",
+                    str(sensitive_count),
+                    "Flagged for review" if sensitive_count > 0 else "No PHI detected",
+                    accent=sens_accent,
+                    bg=sens_bg,
+                )
+                + _stat_capsule(
+                    "File size",
+                    format_file_size(st.session_state.get("source_file_size")) or "—",
+                    "Source dataset",
+                )
+                + '</div>'
             )
-            + _stat_capsule(
-                "File size",
-                format_file_size(st.session_state.get("source_file_size")) or "—",
-                "Source dataset",
-            )
-            + '</div>'
-        )
-        st.markdown(intake_html, unsafe_allow_html=True)
+            st.markdown(intake_html, unsafe_allow_html=True)
 
 
 def render_step_two() -> None:

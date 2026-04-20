@@ -11,7 +11,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import altair as alt
 import streamlit as st
 
 from src.cleaner import apply_hygiene_fixes
@@ -4564,19 +4563,31 @@ def render_step_two() -> None:
                 f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{len(missing_rows)} field(s) with missing values</div>',
                 unsafe_allow_html=True,
             )
-            chart = (
-                alt.Chart(missing_df)
-                .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#0b5ea8")
-                .encode(
-                    y=alt.Y("Field:N", sort="-x", axis=alt.Axis(labelLimit=200, labelAngle=0, title=None)),
-                    x=alt.X("Missing %:Q", title="Missing %", axis=alt.Axis(labelAngle=0)),
-                    tooltip=[alt.Tooltip("Field:N"), alt.Tooltip("Missing %:Q", format=".2f")],
+            # Pure HTML horizontal bar chart — no chart lib dependency
+            max_missing = max(r["Missing %"] for r in missing_rows) if missing_rows else 100
+            chart_html = '<div style="display:flex;flex-direction:column;gap:0.45rem;margin-top:0.2rem;">'
+            for row in missing_df.to_dict("records"):
+                label = str(row["Field"])
+                value = float(row["Missing %"])
+                pct_width = (value / max_missing * 100) if max_missing > 0 else 0
+                # Color intensity by severity
+                if value >= 20:
+                    bar_color = "#9d2b3c"
+                elif value >= 8:
+                    bar_color = "#D68A00"
+                else:
+                    bar_color = "#0b5ea8"
+                chart_html += (
+                    f'<div style="display:flex;align-items:center;gap:0.7rem;">'
+                    f'<div style="min-width:160px;max-width:220px;font-size:0.85rem;color:#17324d;font-weight:500;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{label}">{label}</div>'
+                    f'<div style="flex:1;height:22px;background:#F1F5F9;border-radius:6px;overflow:hidden;position:relative;">'
+                    f'<div style="width:{pct_width}%;height:100%;background:{bar_color};border-radius:6px;transition:width 0.3s;"></div>'
+                    f'</div>'
+                    f'<div style="min-width:60px;font-size:0.85rem;color:#475569;font-weight:600;text-align:right;">{value:.1f}%</div>'
+                    f'</div>'
                 )
-                .properties(height=max(180, min(400, 32 * len(missing_rows) + 40)))
-                .configure_view(strokeWidth=0)
-                .configure_axis(labelFontSize=12, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
-            )
-            st.altair_chart(chart, use_container_width=True)
+            chart_html += '</div>'
+            st.markdown(chart_html, unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────
     # E. FIELD DISTRIBUTIONS — tabbed view (Numeric / Categorical / Dates)
@@ -4625,22 +4636,37 @@ def render_step_two() -> None:
                     st.markdown(stats_html, unsafe_allow_html=True)
 
                     if not numeric_values.empty:
-                        bin_count = min(30, max(10, int(len(numeric_values) ** 0.5)))
+                        bin_count = min(20, max(8, int(len(numeric_values) ** 0.5)))
                         try:
-                            hist_df = pd.DataFrame({"value": numeric_values.values})
-                            hist_chart = (
-                                alt.Chart(hist_df)
-                                .mark_bar(color="#0b5ea8")
-                                .encode(
-                                    x=alt.X("value:Q", bin=alt.Bin(maxbins=bin_count), title=selected_numeric, axis=alt.Axis(labelAngle=0)),
-                                    y=alt.Y("count():Q", title="Count", axis=alt.Axis(labelAngle=0)),
-                                    tooltip=[alt.Tooltip("value:Q", bin=alt.Bin(maxbins=bin_count), title="Range"), alt.Tooltip("count():Q", title="Count")],
+                            bins = pd.cut(numeric_values, bins=bin_count)
+                            hist = bins.value_counts().sort_index()
+                            max_count = int(hist.max()) if len(hist) > 0 else 1
+
+                            # Pure HTML vertical bars with horizontal bottom labels
+                            bars_html = '<div style="margin-top:0.2rem;">'
+                            bars_html += '<div style="display:flex;align-items:flex-end;gap:3px;height:220px;padding:0 0.3rem;border-bottom:1px solid #E5EDF5;">'
+                            for interval, count in hist.items():
+                                bar_height_pct = (count / max_count * 100) if max_count > 0 else 0
+                                midpoint = round((interval.left + interval.right) / 2, 2)
+                                bars_html += (
+                                    f'<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;" '
+                                    f'title="{interval.left:.2f} to {interval.right:.2f}: {int(count)}">'
+                                    f'<div style="font-size:0.68rem;color:#668097;margin-bottom:2px;">{int(count) if count > 0 else ""}</div>'
+                                    f'<div style="width:100%;height:{bar_height_pct}%;background:#0b5ea8;border-radius:3px 3px 0 0;min-height:2px;"></div>'
+                                    f'</div>'
                                 )
-                                .properties(height=260)
-                                .configure_view(strokeWidth=0)
-                                .configure_axis(labelFontSize=11, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
-                            )
-                            st.altair_chart(hist_chart, use_container_width=True)
+                            bars_html += '</div>'
+                            # Bottom axis labels — show every few bins to avoid crowding
+                            step = max(1, len(hist) // 8)
+                            bars_html += '<div style="display:flex;gap:3px;padding:0.4rem 0.3rem 0 0.3rem;">'
+                            for i, interval in enumerate(hist.index):
+                                midpoint = round((interval.left + interval.right) / 2, 2)
+                                label = f"{midpoint:g}" if (i % step == 0 or i == len(hist) - 1) else ""
+                                bars_html += f'<div style="flex:1;font-size:0.72rem;color:#475569;text-align:center;">{label}</div>'
+                            bars_html += '</div>'
+                            bars_html += f'<div style="text-align:center;font-size:0.78rem;color:#668097;margin-top:0.4rem;">{selected_numeric}</div>'
+                            bars_html += '</div>'
+                            st.markdown(bars_html, unsafe_allow_html=True)
                         except Exception:
                             st.info("Unable to compute histogram for this field.")
                 tab_idx += 1
@@ -4668,19 +4694,23 @@ def render_step_two() -> None:
                         cat_df = pd.DataFrame(
                             [{"Value": str(k), "Share (%)": v} for k, v in top_values.items()]
                         ).sort_values("Share (%)", ascending=False)
-                        cat_chart = (
-                            alt.Chart(cat_df)
-                            .mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3, color="#0b5ea8")
-                            .encode(
-                                y=alt.Y("Value:N", sort="-x", axis=alt.Axis(labelLimit=200, labelAngle=0, title=None)),
-                                x=alt.X("Share (%):Q", title="Share (%)", axis=alt.Axis(labelAngle=0)),
-                                tooltip=[alt.Tooltip("Value:N"), alt.Tooltip("Share (%):Q", format=".2f")],
+                        max_share = cat_df["Share (%)"].max() if not cat_df.empty else 100
+                        cat_html = '<div style="display:flex;flex-direction:column;gap:0.45rem;margin-top:0.2rem;">'
+                        for row in cat_df.to_dict("records"):
+                            label = str(row["Value"])
+                            value = float(row["Share (%)"])
+                            pct_width = (value / max_share * 100) if max_share > 0 else 0
+                            cat_html += (
+                                f'<div style="display:flex;align-items:center;gap:0.7rem;">'
+                                f'<div style="min-width:160px;max-width:220px;font-size:0.85rem;color:#17324d;font-weight:500;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{label}">{label}</div>'
+                                f'<div style="flex:1;height:22px;background:#F1F5F9;border-radius:6px;overflow:hidden;">'
+                                f'<div style="width:{pct_width}%;height:100%;background:#0b5ea8;border-radius:6px;transition:width 0.3s;"></div>'
+                                f'</div>'
+                                f'<div style="min-width:60px;font-size:0.85rem;color:#475569;font-weight:600;text-align:right;">{value:.1f}%</div>'
+                                f'</div>'
                             )
-                            .properties(height=max(180, min(350, 38 * len(cat_df) + 30)))
-                            .configure_view(strokeWidth=0)
-                            .configure_axis(labelFontSize=12, titleFontSize=11, labelColor="#475569", titleColor="#668097", gridColor="#EEF3F8")
-                        )
-                        st.altair_chart(cat_chart, use_container_width=True)
+                        cat_html += '</div>'
+                        st.markdown(cat_html, unsafe_allow_html=True)
                     else:
                         st.info("No value distribution available for this field.")
                 tab_idx += 1

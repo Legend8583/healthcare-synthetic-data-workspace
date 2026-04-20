@@ -4439,14 +4439,14 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
 
 def render_step_two() -> None:
-    # Simplified, polished header
+    # Simplified header — Step 2 is now "Explore Source Data" (visualization-first)
     step_cfg = STEP_CONFIG[1]
     st.markdown(
         f'''
         <div class="section-shell" style="margin-bottom:0.9rem;">
             <h3 style="margin:0;">{step_cfg["title"]}</h3>
             <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
-                Review each data quality issue and apply fixes directly. Each fix is applied to the source dataset in place.
+                Inspect the cleaned source dataset before designing metadata. Review shape, distributions, and field-level characteristics.
             </div>
         </div>
         ''',
@@ -4454,7 +4454,7 @@ def render_step_two() -> None:
     )
 
     if not has_active_dataset():
-        st.info("Upload and submit a source dataset before running the scan.")
+        st.info("Upload and submit a source dataset before exploring.")
         return
 
     # ─────────────────────────────────────────────────────────────
@@ -4464,9 +4464,9 @@ def render_step_two() -> None:
     is_reviewed = st.session_state.get("hygiene_reviewed", False)
 
     if is_reviewed:
-        status_chip_color = "#136B48"; status_chip_bg = "#EDF9F3"; status_label = "Scan reviewed"
+        status_chip_color = "#136B48"; status_chip_bg = "#EDF9F3"; status_label = "Data reviewed"
     else:
-        status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"; status_label = "Scan in review"
+        status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"; status_label = "Ready for review"
 
     st.markdown(
         f"""
@@ -4494,100 +4494,17 @@ def render_step_two() -> None:
         unsafe_allow_html=True,
     )
 
-    hygiene = st.session_state.hygiene
-    missingness_frame = build_missingness_strategy_frame(st.session_state.profile)
-    missingness_chart = missingness_frame[missingness_frame["Field"] != "No incomplete field"][["Field", "Missing %"]]
+    profile = st.session_state.profile
+    source_df = st.session_state.source_df
+    columns_profile = profile["columns"]
 
-    # Concern → action mapping (backend actions)
-    CONCERN_TO_ACTIONS = {
-        "Missingness": [
-            ("standardize_blank_strings", "Standardize blank strings as missing"),
-            ("fill_operational_gaps", "Fill missing values (median / \"Unknown\")"),
-        ],
-        "Duplicate rows": [
-            ("remove_duplicates", "Remove exact duplicate rows"),
-        ],
-        "Category normalization": [
-            ("normalize_categories", "Normalize category labels"),
-        ],
-        "Negative values": [
-            ("fix_negative_values", "Convert invalid negative values to missing"),
-        ],
-        "Invalid dates": [
-            ("repair_invalid_dates", "Convert invalid dates to missing"),
-        ],
-        "Outliers": [
-            ("cap_numeric_extremes", "Cap numeric extremes"),
-        ],
-        "Extreme wait times": [
-            ("cap_numeric_extremes", "Cap numeric extremes"),
-        ],
-    }
-
-    # Concerns that carry caveats (some issues might remain after fix)
-    CONCERNS_WITH_CAVEATS = {
-        "Missingness": "Date / identifier fields cannot be auto-filled. See Missingness strategy tab.",
-        "Invalid dates": "Unparseable dates become missing — review the tab for details.",
-    }
-
-    ALL_OPTION_KEYS = list({k for actions in CONCERN_TO_ACTIONS.values() for (k, _) in actions}) + ["group_rare_categories"]
-
-    def _apply_actions(action_keys: list[str], audit_label: str) -> None:
-        """Apply given backend action keys, preserving state."""
-        targeted = {k: False for k in ALL_OPTION_KEYS}
-        for key in action_keys:
-            targeted[key] = True
-
-        prev_intake = st.session_state.get("intake_confirmed", False)
-        prev_reviewed = st.session_state.get("hygiene_reviewed", False)
-        prev_step = st.session_state.get("current_step", 1)
-        prev_actions = list(st.session_state.get("last_cleaning_actions") or [])
-
-        # Push undo snapshot
-        undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
-        undo_stack.append({
-            "source_df": st.session_state.source_df.copy(),
-            "source_label": st.session_state.source_label,
-            "source_file_size": st.session_state.get("source_file_size"),
-            "last_cleaning_actions": prev_actions,
-            "audit_label": audit_label,
-        })
-        st.session_state.hygiene_undo_stack = undo_stack[-10:]
-
-        cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, targeted)
-        base_label = st.session_state.source_label.split(" * remediated")[0]
-        set_source_dataframe(cleaned_df, f"{base_label} * remediated")
-
-        st.session_state.intake_confirmed = prev_intake or True
-        st.session_state.hygiene_reviewed = prev_reviewed
-        st.session_state.current_step = prev_step
-        st.session_state.last_cleaning_actions = prev_actions + list(actions)
-
-        record_audit_event(audit_label, "; ".join(item["effect"] for item in actions), status="Completed")
-        st.rerun()
-
-    def _undo_last_fix() -> None:
-        undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
-        if not undo_stack:
-            return
-        snapshot = undo_stack.pop()
-        st.session_state.hygiene_undo_stack = undo_stack
-
-        prev_step = st.session_state.get("current_step", 1)
-        prev_reviewed = st.session_state.get("hygiene_reviewed", False)
-
-        set_source_dataframe(snapshot["source_df"], snapshot["source_label"])
-        st.session_state.source_file_size = snapshot.get("source_file_size")
-        st.session_state.last_cleaning_actions = snapshot["last_cleaning_actions"]
-        st.session_state.intake_confirmed = True
-        st.session_state.hygiene_reviewed = prev_reviewed
-        st.session_state.current_step = prev_step
-
-        record_audit_event("Remediation undone", f"Reverted: {snapshot['audit_label']}", status="Completed")
-        st.rerun()
+    # Categorize columns by semantic role
+    role_columns: dict[str, list[str]] = {"numeric": [], "date": [], "categorical": [], "binary": [], "identifier": []}
+    for col, details in columns_profile.items():
+        role_columns.setdefault(details["semantic_role"], []).append(col)
 
     # ─────────────────────────────────────────────────────────────
-    # B. QUALITY SUMMARY (capsule cards)
+    # B. DATASET SHAPE — capsule cards
     # ─────────────────────────────────────────────────────────────
     def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
         return (
@@ -4599,318 +4516,194 @@ def render_step_two() -> None:
             f'</div>'
         )
 
-    quality_score = hygiene["quality_score"]
-    high_sev = hygiene["severity_counts"]["High"]
-    med_sev = hygiene["severity_counts"]["Medium"]
-    dup_rows = st.session_state.profile["summary"]["duplicate_rows"]
+    rows = profile["summary"]["rows"]
+    total_cols = profile["summary"]["columns"]
+    total_missing = sum(d["missing_count"] for d in columns_profile.values())
+    total_cells = rows * total_cols
+    missing_pct = (total_missing / total_cells * 100) if total_cells else 0
 
-    if high_sev > 0:
-        high_accent = "#9d2b3c"; high_bg = "#fff1f3"
-    else:
-        high_accent = "#0b5ea8"; high_bg = "#f5f9fc"
+    role_counts = {k: len(v) for k, v in role_columns.items() if v}
+    role_mix = ", ".join(f"{k}: {c}" for k, c in sorted(role_counts.items(), key=lambda x: -x[1]))
 
-    if med_sev > 0:
-        med_accent = "#9C6A17"; med_bg = "#FFF6E3"
-    else:
-        med_accent = "#0b5ea8"; med_bg = "#f5f9fc"
-
-    with st.container(border=True, key="hygiene_summary_panel"):
+    with st.container(border=True, key="dataset_shape_panel"):
         st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Data quality summary</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Agent-assessed source overview</div>'
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Dataset shape</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Overview of the source data</div>'
             '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
-            + _stat_capsule("Quality score", f"{quality_score}", "Higher is better (out of 100)")
-            + _stat_capsule("High severity", str(high_sev), "Critical fixes needed" if high_sev > 0 else "None flagged", accent=high_accent, bg=high_bg)
-            + _stat_capsule("Medium severity", str(med_sev), "Cleanup recommended" if med_sev > 0 else "None flagged", accent=med_accent, bg=med_bg)
-            + _stat_capsule("Duplicate rows", str(dup_rows), "Exact duplicates detected" if dup_rows > 0 else "No duplicates")
+            + _stat_capsule("Rows", f"{rows:,}", "Total records in dataset")
+            + _stat_capsule("Columns", f"{total_cols}", "Fields per record")
+            + _stat_capsule("Completeness", f"{100 - missing_pct:.1f}%", f"{total_missing:,} missing cell(s)")
+            + _stat_capsule("Field types", str(sum(role_counts.values())), role_mix)
             + '</div>',
             unsafe_allow_html=True,
         )
 
     # ─────────────────────────────────────────────────────────────
-    # C. ISSUES & FIXES — REORGANIZED (dataset-level + field-level)
+    # C. DATA PREVIEW (first 10 rows)
     # ─────────────────────────────────────────────────────────────
-    def _severity_badge(severity: str) -> str:
-        if severity == "High":
-            color = "#9d2b3c"; bg = "#fff1f3"
-        elif severity == "Medium":
-            color = "#9C6A17"; bg = "#FFF6E3"
-        else:
-            color = "#136B48"; bg = "#EDF9F3"
-        return (
-            f'<span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.18rem 0.5rem;'
-            f'background:{bg};border-radius:999px;font-size:0.7rem;font-weight:700;color:{color};'
-            f'text-transform:uppercase;letter-spacing:0.05em;">'
-            f'<span style="width:5px;height:5px;border-radius:50%;background:{color};"></span>'
-            f'{severity}</span>'
-        )
-
-    # Partition issues: dataset-level vs field-level, and skip non-actionable ones
-    dataset_issues: list[dict[str, Any]] = []
-    field_issues: dict[str, list[dict[str, Any]]] = {}
-    for issue in hygiene.get("issues", []):
-        col = issue.get("column", "")
-        concern = issue.get("concern", "")
-        if col == "Dataset" or concern == "Duplicate rows":
-            dataset_issues.append(issue)
-        elif concern in CONCERN_TO_ACTIONS:
-            field_issues.setdefault(col, []).append(issue)
-        # Other concerns without fix actions (e.g., Identifier handling) are skipped here;
-        # they\'re informational and carried in the decision log
-
-    total_fixable = len(dataset_issues) + sum(len(v) for v in field_issues.values())
-    total_fields_affected = len(field_issues)
-
-    with st.container(border=True, key="findings_remediation_panel"):
-        summary_text = ""
-        if total_fixable > 0:
-            parts = []
-            if total_fields_affected > 0:
-                parts.append(f"{total_fields_affected} field(s)")
-            if dataset_issues:
-                parts.append(f"{len(dataset_issues)} dataset-level issue(s)")
-            summary_text = f'<span style="font-size:0.82rem;color:#668097;">Across {" and ".join(parts)}</span>'
-
+    with st.container(border=True, key="data_preview_panel"):
         st.markdown(
-            '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.3rem;gap:1rem;flex-wrap:wrap;">'
-            '<div>'
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Issues &amp; fixes</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;line-height:1.3;">Review each issue and apply the recommended fix</div>'
-            '</div>'
-            f'<div>{summary_text}</div>'
-            '</div>',
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Data preview</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">First 10 rows of the source dataset</div>',
             unsafe_allow_html=True,
         )
+        st.dataframe(source_df.head(10), use_container_width=True, hide_index=True)
 
-        if total_fixable == 0:
+    # ─────────────────────────────────────────────────────────────
+    # D. MISSING DATA HEATMAP (one bar chart, only if any missing)
+    # ─────────────────────────────────────────────────────────────
+    missing_rows = [
+        {"Field": col, "Missing %": details["missing_pct"]}
+        for col, details in columns_profile.items()
+        if details["missing_pct"] > 0
+    ]
+    if missing_rows:
+        missing_df = pd.DataFrame(missing_rows).sort_values("Missing %", ascending=False)
+        with st.container(border=True, key="missing_heatmap_panel"):
             st.markdown(
-                '<div style="padding:1.1rem 1.15rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;margin-top:0.3rem;">'
-                '<div style="display:flex;align-items:center;gap:0.7rem;">'
-                '<span style="width:32px;height:32px;border-radius:9px;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">&#10003;</span>'
-                '<div>'
-                '<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.1rem;">Clean</div>'
-                '<div style="font-size:0.96rem;color:#17324d;font-weight:600;">No fixable issues detected</div>'
-                '<div style="font-size:0.82rem;color:#475569;margin-top:0.1rem;">The source dataset passed all automated hygiene checks.</div>'
-                '</div></div></div>',
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Missing data</div>'
+                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{len(missing_rows)} field(s) with missing values</div>',
                 unsafe_allow_html=True,
             )
-        else:
-            # Bulk "Fix all" button
-            if total_fixable > 1 and has_permission("remediate"):
-                all_action_keys = set()
-                for issue in dataset_issues:
-                    for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
-                        all_action_keys.add(k)
-                for col_issues in field_issues.values():
-                    for issue in col_issues:
-                        for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
-                            all_action_keys.add(k)
-
-                fix_all_col, _spacer = st.columns([1, 2.5])
-                if fix_all_col.button(
-                    f"Apply all {total_fixable} recommended fixes",
-                    type="primary",
-                    use_container_width=True,
-                    key="fix_all_issues_btn",
-                ):
-                    _apply_actions(list(all_action_keys), "Bulk remediation applied")
-
-            # ── Dataset-level section ──
-            if dataset_issues:
-                st.markdown(
-                    '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:1rem;margin-bottom:0.4rem;">Dataset-level issues</div>',
-                    unsafe_allow_html=True,
-                )
-                for issue in dataset_issues:
-                    severity = issue.get("severity", "Low")
-                    concern = issue.get("concern", "")
-                    finding = issue.get("finding", "")
-
-                    st.markdown(
-                        f'<div style="padding:0.9rem 1.1rem 0.4rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-bottom:0.5rem;">'
-                        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.35rem;flex-wrap:wrap;">'
-                        f'{_severity_badge(severity)}'
-                        f'<div style="font-size:1rem;font-weight:600;color:#17324d;">{concern}</div>'
-                        f'</div>'
-                        f'<div style="font-size:0.86rem;color:#475569;line-height:1.5;margin-bottom:0.3rem;">{finding}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    if has_permission("remediate"):
-                        action_keys = [k for (k, _) in CONCERN_TO_ACTIONS.get(concern, [])]
-                        btn_col, _blank = st.columns([1, 2.5])
-                        if btn_col.button(
-                            f"Fix: {concern}",
-                            key=f"fix_ds_{concern.replace(' ', '_')}_btn",
-                            use_container_width=True,
-                        ):
-                            _apply_actions(action_keys, f"Fix applied: {concern}")
-
-            # ── Field-level section ──
-            if field_issues:
-                st.markdown(
-                    '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:1.2rem;margin-bottom:0.4rem;">Field-level issues</div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Sort fields by severity priority (High first)
-                def _field_priority(col: str) -> int:
-                    sevs = [i.get("severity", "Low") for i in field_issues[col]]
-                    if "High" in sevs:
-                        return 0
-                    if "Medium" in sevs:
-                        return 1
-                    return 2
-
-                sorted_fields = sorted(field_issues.keys(), key=_field_priority)
-
-                for col in sorted_fields:
-                    col_issues = field_issues[col]
-                    # Top severity for field badge
-                    sevs = [i.get("severity", "Low") for i in col_issues]
-                    if "High" in sevs:
-                        top_sev = "High"
-                    elif "Medium" in sevs:
-                        top_sev = "Medium"
-                    else:
-                        top_sev = "Low"
-
-                    # Collect unique concerns affecting this field (with caveats)
-                    field_concerns = []
-                    caveats = set()
-                    for issue in col_issues:
-                        c = issue["concern"]
-                        if c not in field_concerns:
-                            field_concerns.append(c)
-                        if c in CONCERNS_WITH_CAVEATS:
-                            caveats.add(CONCERNS_WITH_CAVEATS[c])
-
-                    # Build issue list rows
-                    issue_rows_html = ""
-                    for issue in col_issues:
-                        c_severity = issue.get("severity", "Low")
-                        c_concern = issue.get("concern", "")
-                        c_finding = issue.get("finding", "")
-                        issue_rows_html += (
-                            f'<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid #EEF3F8;">'
-                            f'{_severity_badge(c_severity)}'
-                            f'<div style="min-width:0;flex:1;">'
-                            f'<div style="font-size:0.88rem;font-weight:600;color:#17324d;">{c_concern}</div>'
-                            f'<div style="font-size:0.8rem;color:#668097;line-height:1.4;margin-top:0.05rem;">{c_finding}</div>'
-                            f'</div></div>'
-                        )
-
-                    caveats_html = ""
-                    if caveats:
-                        caveats_html = (
-                            '<div style="margin-top:0.5rem;padding:0.5rem 0.7rem;background:#FFF6E3;border:1px solid #F3DBA6;border-radius:8px;font-size:0.78rem;color:#7A5219;line-height:1.5;">'
-                            '<span style="font-weight:700;">Note:</span> '
-                            + " ".join(caveats)
-                            + '</div>'
-                        )
-
-                    st.markdown(
-                        f'<div style="padding:0.9rem 1.1rem 0.5rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-bottom:0.5rem;">'
-                        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;flex-wrap:wrap;">'
-                        f'{_severity_badge(top_sev)}'
-                        f'<code style="background:#EBF1F7;padding:0.2rem 0.55rem;border-radius:6px;font-size:0.9rem;color:#08467D;font-weight:700;">{col}</code>'
-                        f'<span style="font-size:0.8rem;color:#8A9CAC;">{len(col_issues)} issue(s)</span>'
-                        f'</div>'
-                        f'{issue_rows_html}'
-                        f'{caveats_html}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    if has_permission("remediate"):
-                        action_keys = set()
-                        for issue in col_issues:
-                            for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
-                                action_keys.add(k)
-                        btn_col, _blank = st.columns([1, 2.5])
-                        if btn_col.button(
-                            f"Fix all issues in {col}",
-                            key=f"fix_field_{col}_btn",
-                            use_container_width=True,
-                        ):
-                            _apply_actions(list(action_keys), f"Field fix: {col}")
+            st.bar_chart(missing_df.set_index("Field"), use_container_width=True, height=max(180, min(400, 30 * len(missing_rows) + 60)))
 
     # ─────────────────────────────────────────────────────────────
-    # D. APPLIED FIXES (with undo)
+    # E. NUMERIC FIELD DISTRIBUTIONS
     # ─────────────────────────────────────────────────────────────
-    if st.session_state.last_cleaning_actions:
-        with st.container(border=True, key="last_remediation_panel"):
-            count = len(st.session_state.last_cleaning_actions)
-            undo_available = bool(st.session_state.get("hygiene_undo_stack"))
+    if role_columns["numeric"]:
+        with st.container(border=True, key="numeric_distributions_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Numeric fields</div>'
+                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Distributions across {len(role_columns["numeric"])} numeric field(s)</div>',
+                unsafe_allow_html=True,
+            )
 
-            header_cols = st.columns([2.5, 1], gap="small")
-            with header_cols[0]:
-                st.markdown(
-                    f'<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Fixes applied</div>'
-                    f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{count} cleanup action(s) applied to the source dataset</div>',
-                    unsafe_allow_html=True,
-                )
-            with header_cols[1]:
-                st.markdown("<div style=\"height:0.5rem;\"></div>", unsafe_allow_html=True)
-                if st.button(
-                    "↶ Undo last fix",
-                    disabled=not undo_available or not has_permission("remediate"),
-                    use_container_width=True,
-                    key="undo_last_fix_btn",
-                    help="Reverts the most recent remediation step and restores the previous source dataset.",
-                ):
-                    _undo_last_fix()
+            # Field selector
+            selected_numeric = st.selectbox(
+                "Select a numeric field to visualize",
+                options=role_columns["numeric"],
+                key="num_field_selector",
+            )
 
-            st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
+            details = columns_profile[selected_numeric]
+            numeric_values = pd.to_numeric(source_df[selected_numeric], errors="coerce").dropna()
+
+            # Summary stats capsules for the selected field
+            stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+            stats_html += _stat_capsule("Min", f"{details.get('min', 0):g}", "Lowest value")
+            stats_html += _stat_capsule("Median", f"{details.get('median', 0):g}", f"Q1: {details.get('q1', 0):g} · Q3: {details.get('q3', 0):g}")
+            stats_html += _stat_capsule("Mean", f"{details.get('mean', 0):g}", f"Std: {details.get('std', 0):g}")
+            stats_html += _stat_capsule("Max", f"{details.get('max', 0):g}", "Highest value")
+            stats_html += '</div>'
+            st.markdown(stats_html, unsafe_allow_html=True)
+
+            # Histogram
+            if not numeric_values.empty:
+                # Build histogram bins
+                bin_count = min(30, max(10, int(len(numeric_values) ** 0.5)))
+                try:
+                    bins = pd.cut(numeric_values, bins=bin_count)
+                    hist = bins.value_counts().sort_index()
+                    # Use midpoint of each bin as x label
+                    midpoints = [round((interval.left + interval.right) / 2, 2) for interval in hist.index]
+                    chart_df = pd.DataFrame({"Bin midpoint": midpoints, "Count": hist.values})
+                    st.bar_chart(chart_df.set_index("Bin midpoint"), use_container_width=True, height=260)
+                except Exception:
+                    st.info("Unable to compute histogram for this field.")
 
     # ─────────────────────────────────────────────────────────────
-    # E. SUPPORTING CONTEXT (tabs)
+    # F. CATEGORICAL FIELD TOP VALUES
     # ─────────────────────────────────────────────────────────────
-    with st.container(border=True, key="scan_context_panel"):
+    cat_cols = role_columns["categorical"] + role_columns["binary"]
+    if cat_cols:
+        with st.container(border=True, key="categorical_top_values_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Categorical fields</div>'
+                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Top value distribution across {len(cat_cols)} categorical field(s)</div>',
+                unsafe_allow_html=True,
+            )
+
+            selected_cat = st.selectbox(
+                "Select a categorical field to visualize",
+                options=cat_cols,
+                key="cat_field_selector",
+            )
+            details = columns_profile[selected_cat]
+            top_values = details.get("top_values", {})
+
+            if top_values:
+                # Summary capsules
+                stats_html = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+                stats_html += _stat_capsule("Unique values", str(details["unique_count"]), f"Completeness: {details['completeness_score']:.1f}%")
+                stats_html += _stat_capsule("Top value", list(top_values.keys())[0] if top_values else "—", f"{list(top_values.values())[0]:.1f}%" if top_values else "—")
+                stats_html += _stat_capsule("Examples", ", ".join(details.get("examples", [])[:2]) or "—", "Sampled from non-null values")
+                stats_html += '</div>'
+                st.markdown(stats_html, unsafe_allow_html=True)
+
+                # Top values bar chart
+                cat_df = pd.DataFrame(
+                    [{"Value": k, "Share (%)": v} for k, v in top_values.items()]
+                ).sort_values("Share (%)", ascending=False)
+                st.bar_chart(cat_df.set_index("Value"), use_container_width=True, height=max(180, min(350, 35 * len(cat_df) + 60)))
+            else:
+                st.info("No value distribution available for this field.")
+
+    # ─────────────────────────────────────────────────────────────
+    # G. DATE FIELD RANGES
+    # ─────────────────────────────────────────────────────────────
+    if role_columns["date"]:
+        with st.container(border=True, key="date_ranges_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Date fields</div>'
+                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Coverage across {len(role_columns["date"])} date field(s)</div>',
+                unsafe_allow_html=True,
+            )
+            date_rows = []
+            for col in role_columns["date"]:
+                d = columns_profile[col]
+                date_rows.append({
+                    "Field": col,
+                    "Earliest": d.get("min", "—"),
+                    "Latest": d.get("max", "—"),
+                    "Completeness %": d["completeness_score"],
+                    "Unique dates": d["unique_count"],
+                })
+            st.dataframe(pd.DataFrame(date_rows), use_container_width=True, hide_index=True)
+
+    # ─────────────────────────────────────────────────────────────
+    # H. FULL FIELD PROFILE TABLE (all columns reference)
+    # ─────────────────────────────────────────────────────────────
+    with st.container(border=True, key="field_profile_panel"):
         st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Supporting context</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Deeper views for investigation</div>',
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">All fields</div>'
+            f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Reference profile for all {total_cols} field(s)</div>',
             unsafe_allow_html=True,
         )
-        scan_tabs = st.tabs(["Source preview", "Missingness strategy", "Field profile"])
-        with scan_tabs[0]:
-            preview_cols = st.columns(2)
-            preview_cols[0].metric("Rows in source data", len(st.session_state.source_df))
-            preview_cols[1].metric("Columns in source data", len(st.session_state.source_df.columns))
-            st.dataframe(st.session_state.source_df.head(15), use_container_width=True, hide_index=True)
-        with scan_tabs[1]:
-            if not missingness_chart.empty:
-                chart_frame = missingness_chart.set_index("Field")
-                st.bar_chart(chart_frame, use_container_width=True)
-            st.dataframe(missingness_frame, use_container_width=True, hide_index=True)
-        with scan_tabs[2]:
-            profile_rows = []
-            for column, details in st.session_state.profile["columns"].items():
-                profile_rows.append(
-                    {
-                        "Field": column,
-                        "Role": details["semantic_role"],
-                        "Missing %": details["missing_pct"],
-                        "Unique values": details["unique_count"],
-                        "Example values": ", ".join(details.get("examples", [])),
-                    }
-                )
-            st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+        profile_rows = []
+        for column, details in columns_profile.items():
+            profile_rows.append({
+                "Field": column,
+                "Type": details["semantic_role"],
+                "Missing %": details["missing_pct"],
+                "Completeness %": details["completeness_score"],
+                "Unique": details["unique_count"],
+                "Examples": ", ".join(details.get("examples", [])[:3]),
+            })
+        st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────
-    # F. BOTTOM NAV — Mark complete + Back to Step 1
+    # I. BOTTOM NAV
     # ─────────────────────────────────────────────────────────────
-    st.markdown("<div style=\"height:0.4rem;\"></div>", unsafe_allow_html=True)
+    st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
     nav_cols = st.columns([1, 1], gap="small")
     if nav_cols[0].button(
-        "Mark scan review complete",
+        "Mark data review complete",
         type="primary",
         use_container_width=True,
         disabled=st.session_state.hygiene_reviewed,
     ):
         st.session_state.hygiene_reviewed = True
-        record_audit_event("Scan review completed", "Source quality and risk findings were acknowledged.", status="Completed")
+        record_audit_event("Data exploration completed", "Source data was reviewed before metadata design.", status="Completed")
         st.session_state.current_step = 2
         st.rerun()
     if nav_cols[1].button(
@@ -4922,9 +4715,9 @@ def render_step_two() -> None:
         st.rerun()
 
     # ─────────────────────────────────────────────────────────────
-    # G. AGENT DECISION LOG (bottom of page, per user request)
+    # J. AGENT DECISION LOG (bottom of page)
     # ─────────────────────────────────────────────────────────────
-    st.markdown("<div style=\"height:0.6rem;\"></div>", unsafe_allow_html=True)
+    st.markdown('<div style="height:0.6rem;"></div>', unsafe_allow_html=True)
     metadata_local = editor_frame_to_metadata(st.session_state.metadata_editor_df)
     controls_local = st.session_state.controls
     readiness = compute_agent_readiness(
@@ -4939,11 +4732,10 @@ def render_step_two() -> None:
         synthetic_ready=st.session_state.get("synthetic_df") is not None,
         results_shared=bool(st.session_state.get("results_shared_at")),
     )
-    inline_hygiene = classify_hygiene_issues(hygiene) if hygiene is not None else None
     render_consolidated_decision_log(
         readiness=readiness,
         profile=st.session_state.get("profile"),
-        hygiene=hygiene,
+        hygiene=st.session_state.get("hygiene"),
         metadata=metadata_local, controls=controls_local,
         generation_summary=st.session_state.get("generation_summary"),
         validation=st.session_state.get("validation"),
@@ -4953,7 +4745,6 @@ def render_step_two() -> None:
         metadata_status=st.session_state.get("metadata_status", "Draft"),
         synthetic_ready=st.session_state.get("synthetic_df") is not None,
         results_shared=bool(st.session_state.get("results_shared_at")),
-        classified_hygiene=inline_hygiene,
     )
 
 

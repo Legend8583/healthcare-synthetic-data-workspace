@@ -55,13 +55,8 @@ STEP_CONFIG = [
         "owner": "System",
     },
     {
-        "title": "Review Metadata Assumptions",
-        "description": "Confirm approved metadata assumptions before reviewer handoff.",
-        "owner": "Data Analyst",
-    },
-    {
-        "title": "Submit for Reviewer Sign-off",
-        "description": "Controlled handoff of the metadata-reviewed synthetic request.",
+        "title": "Review & Approve Metadata",
+        "description": "Configure metadata assumptions and submit directly for reviewer sign-off.",
         "owner": "Data Analyst → Manager / Reviewer",
     },
     {
@@ -87,8 +82,8 @@ ROLE_TO_GROUP: dict[str, str] = {
 }
 
 ROLE_VISIBLE_STEPS: dict[str, list[int]] = {
-    "Data Analyst": [0, 1, 2, 3, 4, 5, 6],
-    "Manager / Reviewer": [3, 4, 5, 6],
+    "Data Analyst": [0, 1, 2, 3, 4, 5],
+    "Manager / Reviewer": [2, 3, 4, 5],
 }
 
 ROLE_CONFIGS: dict[str, dict[str, Any]] = {
@@ -1292,7 +1287,10 @@ def inject_styles() -> None:
             .st-key-dataset_shape_panel,
             .st-key-data_preview_panel,
             .st-key-missing_heatmap_panel,
-            .st-key-field_distributions_panel {
+            .st-key-field_distributions_panel,
+            .st-key-metadata_summary_panel,
+            .st-key-field_settings_panel,
+            .st-key-action_bar_panel {
                 background: var(--surface) !important;
                 border: 1px solid var(--line) !important;
                 border-radius: 20px !important;
@@ -1328,6 +1326,18 @@ def inject_styles() -> None:
                 padding-bottom: 1.2rem !important;
             }
 
+            .st-key-metadata_summary_panel {
+                padding-bottom: 1.4rem !important;
+            }
+
+            .st-key-field_settings_panel {
+                padding-bottom: 1.1rem !important;
+            }
+
+            .st-key-action_bar_panel {
+                padding-bottom: 1.1rem !important;
+            }
+
             .st-key-request_details_panel > div,
             .st-key-upload_task_panel > div,
             .st-key-submission_readiness_panel > div,
@@ -1335,7 +1345,10 @@ def inject_styles() -> None:
             .st-key-dataset_shape_panel > div,
             .st-key-data_preview_panel > div,
             .st-key-missing_heatmap_panel > div,
-            .st-key-field_distributions_panel > div {
+            .st-key-field_distributions_panel > div,
+            .st-key-metadata_summary_panel > div,
+            .st-key-field_settings_panel > div,
+            .st-key-action_bar_panel > div {
                 background: transparent !important;
             }
 
@@ -2648,15 +2661,14 @@ STEP_PERMISSION_LABELS: dict[int, list[tuple[str, str]]] = {
         ("rollback", "Discard a run and go back upstream"),
     ],
     4: [
-        ("validate", "Run a new validation pass"),
-        ("request_export", "Request controlled release"),
-        ("view_audit", "Review audit and validation history"),
-    ],
-    5: [
         ("request_export", "Request governed release"),
         ("approve_release_policy", "Review release controls"),
         ("approve_export", "Authorize final export"),
         ("view_audit", "Review audit and approval history"),
+    ],
+    5: [
+        ("view_audit", "Review audit and analysis history"),
+        ("review_results", "Explore released synthetic output"),
     ],
 }
 
@@ -2673,11 +2685,11 @@ ROLE_PRIORITY_NOTES: dict[str, str] = {
 
 STEP_EXPLANATION_NOTES: dict[int, str] = {
     0: "This step captures the request, places the dataset in the workspace, and makes clear who can inspect source rows.",
-    1: "This step shows the automated scan for PHI, data quality issues, missingness, and fields that need closer handling.",
-    2: "This step turns profiled schema into a governance-reviewed metadata package with handling rules and approval status.",
+    1: "This step explores the source dataset — shape, distributions, and field-level characteristics — before metadata design.",
+    2: "This step configures per-field metadata handling and submits the package directly to the reviewer for sign-off.",
     3: "This step uses the approved package to generate synthetic output with visible distribution, structure, and noise controls.",
-    4: "This step shows whether the synthetic package is still useful for analysis while keeping privacy risk understandable.",
-    5: "This step keeps export permission-based, auditable, and controlled by release owners rather than the generation team.",
+    4: "This step keeps export permission-based, auditable, and controlled by release owners rather than the generation team.",
+    5: "This step explores the released synthetic dataset. Source data never leaves governance during analysis.",
 }
 
 
@@ -2918,10 +2930,10 @@ def current_workflow_stage(metadata: list[dict[str, Any]], controls: dict[str, A
     if not st.session_state.settings_reviewed or st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
         return 2
     if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-        return 3
+        return 2  # Merged review & approve page
     if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-        return 4
-    return 5
+        return 3
+    return 4
 
 
 def build_progress_tracker_rows(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[dict[str, str]]:
@@ -2977,18 +2989,21 @@ def build_primary_action(metadata: list[dict[str, Any]], controls: dict[str, Any
     label_map = {
         0: step_zero_label,
         1: "Review Scan Results",
-        2: "Review Data Settings",
-        3: "Review Submitted Request" if st.session_state.current_role == "Manager / Reviewer" else "Submit for Review",
-        4: "Generate Synthetic Data",
-        5: "Review Final Output" if st.session_state.current_role == "Manager / Reviewer" else "Download & Share Results",
+        2: (
+            "Review Submitted Request" if st.session_state.current_role == "Manager / Reviewer"
+            else "Review & Submit Metadata"
+        ),
+        3: "Generate Synthetic Data",
+        4: "Review Final Output" if st.session_state.current_role == "Manager / Reviewer" else "Download & Share Results",
+        5: "Analyze Synthetic Data",
     }
     note_map = {
         0: "Add request details, upload a CSV, and submit when the request is ready.",
-        1: "Confirm the scan findings and resolve data quality issues before moving on.",
-        2: "Adjust field handling and data controls before the request is sent for review.",
-        3: "Move the reviewed request into approval or respond to the reviewer decision.",
-        4: "Run the approved request to create the synthetic dataset.",
-        5: "Review the final output, validation summary, and release-ready files.",
+        1: "Explore the source dataset before designing metadata.",
+        2: "Configure field handling, then submit directly to the reviewer for sign-off.",
+        3: "Run the approved request to create the synthetic dataset.",
+        4: "Review the final output, validation summary, and release-ready files.",
+        5: "Explore the released synthetic dataset. Source data never leaves governance.",
     }
     return {
         "step": action_step,
@@ -3528,20 +3543,24 @@ def build_operating_state_cards(metadata: list[dict[str, Any]], controls: dict[s
 
 def step_status_labels(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[str]:
     if not has_active_dataset():
-        return ["Upload needed", "Locked", "Locked", "Locked", "Locked", "Locked", "Locked"]
+        return ["Upload needed", "Locked", "Locked", "Locked", "Locked", "Locked"]
+
+    # Merged metadata status: combines "settings reviewed" + "approval" into one label
+    if not st.session_state.settings_reviewed:
+        metadata_label = "Action needed"
+    elif st.session_state.metadata_status == "In Review":
+        metadata_label = "Pending approval"
+    elif st.session_state.metadata_status == "Approved":
+        metadata_label = "Approved"
+    elif st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
+        metadata_label = "Changes requested"
+    else:
+        metadata_label = "Ready to submit"
+
     return [
         "Uploaded" if st.session_state.intake_confirmed else "Action needed",
         "Scanned" if st.session_state.hygiene_reviewed else "Ready",
-        "Reviewed" if st.session_state.settings_reviewed else "Action needed",
-        (
-            "Pending approval"
-            if st.session_state.metadata_status == "In Review"
-            else "Approved"
-            if st.session_state.metadata_status == "Approved"
-            else "Changes requested"
-            if st.session_state.metadata_status in {"Changes Requested", "Rejected"}
-            else "Ready to submit"
-        ),
+        metadata_label,
         "Generated" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting",
         "Shared" if st.session_state.results_shared_at else ("Ready" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting"),
         "Available" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Locked",
@@ -3556,10 +3575,10 @@ def max_unlocked_step(metadata: list[dict[str, Any]], controls: dict[str, Any]) 
     if not st.session_state.settings_reviewed:
         return 2
     if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-        return 3
+        return 2  # Stay on merged review page until approved
     if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-        return 4
-    return 6
+        return 3
+    return 5
 
 
 def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, Any], role: str | None = None) -> int:
@@ -3571,9 +3590,9 @@ def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, An
 
     if active_role == "Manager / Reviewer":
         if st.session_state.metadata_status == "In Review":
-            return 3
+            return 2  # Merged review & approve page
         if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls):
-            return 5
+            return 4  # Release page
         return visible_steps[0]
 
     if active_role == "Data Analyst":
@@ -3584,10 +3603,10 @@ def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, An
         if not st.session_state.settings_reviewed or st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
             return 2
         if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-            return 3
+            return 2  # Stay on merged page until approved
         if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-            return 4
-        return 5
+            return 3  # Generate page
+        return 4  # Release page
 
     unlocked = max_unlocked_step(metadata, controls)
     for step_index in visible_steps:
@@ -4771,8 +4790,24 @@ def render_step_two() -> None:
 
 
 def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    render_section_header(2, "Confirm approved metadata assumptions for each field.")
-    render_previous_step_control(2)
+    """Merged metadata review + approval page.
+
+    Single page handles: analyst-side editing of per-field metadata
+    AND manager-side review/approval. No separate handoff step.
+    """
+    # Simplified header
+    step_cfg = STEP_CONFIG[2]
+    st.markdown(
+        f'''
+        <div class="section-shell" style="margin-bottom:0.9rem;">
+            <h3 style="margin:0;">{step_cfg["title"]}</h3>
+            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
+                Configure how each field should be handled, then submit directly to the reviewer for sign-off.
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 
     if not has_active_dataset():
         st.info("Upload a dataset to review metadata assumptions.")
@@ -4784,116 +4819,188 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
     metadata_frame = build_metadata_review_frame(metadata)
     active_package = active_metadata_package_record(metadata)
-    metadata_edit_locked = (
-        has_permission("edit_metadata")
-        and st.session_state.metadata_status in {"In Review", "Approved"}
+    review_package = current_review_package_record()
+    package_summary = summarize_metadata_package(metadata)
+
+    is_locked = (
+        st.session_state.metadata_status in {"In Review", "Approved"}
         and not has_unsubmitted_metadata_changes(metadata)
     )
+    can_edit = has_permission("edit_metadata") and not is_locked
+    can_submit = has_permission("submit_metadata")
+    can_approve = has_permission("approve_metadata") or (st.session_state.current_role == "Manager / Reviewer")
 
-    summary_cols = st.columns(4)
-    summary_cols[0].metric("Settings status", "Reviewed" if st.session_state.settings_reviewed else "Draft")
-    summary_cols[1].metric("Included fields", int(st.session_state.metadata_editor_df["include"].sum()))
-    summary_cols[2].metric("Sensitive fields", int(metadata_frame["Sensitivity"].isin(["Restricted", "Sensitive"]).sum()))
-    summary_cols[3].metric("Targeted actions", int(st.session_state.metadata_editor_df["control_action"].ne("Preserve").sum()))
+    # ─────────────────────────────────────────────────────────────
+    # A. STATUS STRIP
+    # ─────────────────────────────────────────────────────────────
+    status = st.session_state.metadata_status
+    if status == "Approved":
+        chip_color = "#136B48"; chip_bg = "#EDF9F3"; chip_label = "Approved"
+    elif status == "In Review":
+        chip_color = "#0b5ea8"; chip_bg = "#EBF1F7"; chip_label = "In review"
+    elif status == "Changes Requested":
+        chip_color = "#9C6A17"; chip_bg = "#FFF6E3"; chip_label = "Changes requested"
+    elif status == "Rejected":
+        chip_color = "#9d2b3c"; chip_bg = "#fff1f3"; chip_label = "Rejected"
+    else:
+        chip_color = "#668097"; chip_bg = "#F1F5F9"; chip_label = "Draft"
 
-    if st.session_state.metadata_status == "In Review" and active_package is not None:
-        st.info(
-            f"Package {active_package['package_id']} is currently with the Manager / Reviewer. Start a revised draft only if you need to change the submitted version."
-        )
-    elif st.session_state.metadata_status == "Approved" and active_package is not None:
-        st.success(
-            f"Package {active_package['package_id']} was approved by {active_package['approved_by']} at {active_package['approved_at']}."
-        )
-    elif st.session_state.metadata_status == "Changes Requested" and active_package is not None:
-        st.warning(active_package.get("review_note") or "The Manager / Reviewer requested changes to this package.")
-    elif st.session_state.metadata_status == "Rejected" and active_package is not None:
-        st.error(active_package.get("review_note") or "The Manager / Reviewer rejected this request package.")
-
-    if metadata_edit_locked and active_package is not None:
-        lock_cols = st.columns([1.55, 0.45], gap="large")
-        lock_cols[0].info(
-            f"Package {active_package['package_id']} is frozen so both roles see the same submitted version."
-        )
-        if st.session_state.metadata_status == "Approved":
-            if lock_cols[1].button("Revise draft", use_container_width=True):
-                st.session_state.metadata_status = "Draft"
-                st.session_state.settings_reviewed = False
-                st.session_state.settings_review_signature = None
-                record_audit_event(
-                    "Settings draft reopened",
-                    f"A revised working draft was opened from package {active_package['package_id']}.",
-                    status="Updated",
-                )
-                rerun_with_persist()
-
-    # Agent: Metadata review artifact (unified primary artifact for this page)
-    classified_for_artifact = classify_hygiene_issues(st.session_state.hygiene) if has_active_dataset() else []
-    meta_artifact = build_metadata_review_artifact(
-        metadata,
-        st.session_state.profile,
-        classified_for_artifact,
-        sensitivity_fn=metadata_sensitivity,
-        generation_rule_fn=metadata_handling,
+    active_request = st.session_state.active_request_id or "Not yet created"
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #d6e2ec;border-radius:20px;box-shadow:0 10px 24px rgba(8,70,125,0.08);margin-bottom:1rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Request</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;font-family:ui-monospace,monospace;">{active_request}</span>
+            </div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Role</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{st.session_state.current_role}</span>
+            </div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">3 of {len(STEP_CONFIG)}</span>
+            </div>
+            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.28rem 0.7rem;background:{chip_bg};border-radius:999px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:{chip_color};"></span>
+                <span style="font-size:0.8rem;color:{chip_color};font-weight:700;">{chip_label}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    render_metadata_review_artifact(meta_artifact)
 
-    quick_tab, edit_tab, record_tab = st.tabs(
-        ["Targeted field actions", "Advanced editor", "Submitted version"]
-    )
-    with quick_tab:
-        quick_summary_cols = st.columns(4)
-        quick_summary_cols[0].metric("Restricted fields", int(metadata_frame["Sensitivity"].eq("Restricted").sum()))
-        quick_summary_cols[1].metric("Sensitive fields", int(metadata_frame["Sensitivity"].eq("Sensitive").sum()))
-        quick_summary_cols[2].metric("Excluded fields", int(st.session_state.metadata_editor_df["include"].eq(False).sum()))
-        quick_summary_cols[3].metric("Targeted actions", int(st.session_state.metadata_editor_df["control_action"].ne("Preserve").sum()))
+    # ─────────────────────────────────────────────────────────────
+    # B. METADATA SUMMARY — capsule cards
+    # ─────────────────────────────────────────────────────────────
+    def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
+        return (
+            f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
+            f'border:1px solid #d6e2ec;border-radius:12px;margin-bottom:0.25rem;">'
+            f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
+            f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
+            f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
+            f'</div>'
+        )
 
-        if has_permission("edit_metadata") and not metadata_edit_locked:
+    included = int(st.session_state.metadata_editor_df["include"].sum())
+    total = len(st.session_state.metadata_editor_df)
+    excluded = total - included
+    restricted = int(metadata_frame["Sensitivity"].eq("Restricted").sum())
+    sensitive = int(metadata_frame["Sensitivity"].eq("Sensitive").sum())
+    targeted_actions = int(st.session_state.metadata_editor_df["control_action"].ne("Preserve").sum())
+
+    sensitive_accent = "#9d2b3c" if restricted > 0 else ("#9C6A17" if sensitive > 0 else "#0b5ea8")
+    sensitive_bg = "#fff1f3" if restricted > 0 else ("#FFF6E3" if sensitive > 0 else "#f5f9fc")
+    sensitive_detail = f"{restricted} restricted · {sensitive} sensitive" if (restricted + sensitive) > 0 else "None flagged"
+
+    with st.container(border=True, key="metadata_summary_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Metadata summary</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Overview of the package being submitted</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule("Included fields", f"{included}/{total}", f"{excluded} excluded from synthesis")
+            + _stat_capsule("Sensitive fields", str(restricted + sensitive), sensitive_detail, accent=sensitive_accent, bg=sensitive_bg)
+            + _stat_capsule("Targeted actions", str(targeted_actions), "Custom handling applied" if targeted_actions > 0 else "Default handling")
+            + _stat_capsule("Package status", chip_label, f"Submitted by {st.session_state.metadata_submitted_by}" if st.session_state.metadata_submitted_by else "Not yet submitted", accent=chip_color, bg=chip_bg)
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ─────────────────────────────────────────────────────────────
+    # C. STATUS CALLOUTS (inline feedback from reviewer)
+    # ─────────────────────────────────────────────────────────────
+    if status == "Changes Requested" and active_package is not None:
+        note = active_package.get("review_note") or "Reviewer requested changes."
+        reviewer = active_package.get("reviewed_by") or "Reviewer"
+        reviewed_at = active_package.get("reviewed_at") or ""
+        st.markdown(
+            f'<div style="padding:1rem 1.15rem;background:#FFF6E3;border:1px solid #F3DBA6;border-radius:14px;margin-bottom:0.9rem;">'
+            f'<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9C6A17;margin-bottom:0.25rem;">Changes requested</div>'
+            f'<div style="font-size:0.9rem;color:#17324d;line-height:1.5;margin-bottom:0.25rem;"><strong>{reviewer}</strong>{" at " + reviewed_at if reviewed_at else ""}</div>'
+            f'<div style="font-size:0.88rem;color:#475569;line-height:1.55;">{note}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    elif status == "Rejected" and active_package is not None:
+        note = active_package.get("review_note") or "Request rejected."
+        reviewer = active_package.get("reviewed_by") or "Reviewer"
+        reviewed_at = active_package.get("reviewed_at") or ""
+        st.markdown(
+            f'<div style="padding:1rem 1.15rem;background:#fff1f3;border:1px solid #F3C4CB;border-radius:14px;margin-bottom:0.9rem;">'
+            f'<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9d2b3c;margin-bottom:0.25rem;">Rejected</div>'
+            f'<div style="font-size:0.9rem;color:#17324d;line-height:1.5;margin-bottom:0.25rem;"><strong>{reviewer}</strong>{" at " + reviewed_at if reviewed_at else ""}</div>'
+            f'<div style="font-size:0.88rem;color:#475569;line-height:1.55;">{note}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ─────────────────────────────────────────────────────────────
+    # D. FIELD SETTINGS EDITOR (the core table)
+    # ─────────────────────────────────────────────────────────────
+    with st.container(border=True, key="field_settings_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Field settings</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.6rem;line-height:1.3;">Configure how each field is handled</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Bulk profile buttons (analyst only, while draft)
+        if can_edit:
             bulk_cols = st.columns(3)
-            if bulk_cols[0].button("Tighten PHI controls", use_container_width=True):
+            if bulk_cols[0].button("Tighten PHI controls", use_container_width=True, help="Auto-apply stricter handling to sensitive fields"):
                 apply_bulk_metadata_profile("tighten_phi")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
-            if bulk_cols[1].button("Preserve analytics detail", use_container_width=True):
+            if bulk_cols[1].button("Preserve analytics detail", use_container_width=True, help="Retain detail for non-sensitive fields"):
                 apply_bulk_metadata_profile("preserve_analytics")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
-            if bulk_cols[2].button("Reset metadata defaults", use_container_width=True):
+            if bulk_cols[2].button("Reset to defaults", use_container_width=True, help="Restore agent-suggested defaults"):
                 apply_bulk_metadata_profile("reset_defaults")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
 
-            quick_editor_source = st.session_state.metadata_editor_df.copy()
-            quick_editor_source["Sensitivity"] = [metadata_sensitivity(item) for item in editor_frame_to_metadata(quick_editor_source)]
-            quick_editor_source["Current handling"] = [metadata_handling(item) for item in editor_frame_to_metadata(quick_editor_source)]
-            quick_editor_source = quick_editor_source[
-                ["column", "Sensitivity", "data_type", "control_action", "include", "Current handling", "notes"]
-            ]
-            quick_editor_source = quick_editor_source.sort_values(
-                by=["Sensitivity", "column"],
-                key=lambda series: series.map({"Restricted": 0, "Sensitive": 1, "Operational": 2}).fillna(series),
-            )
-            quick_editor = st.data_editor(
-                quick_editor_source,
+            st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
+
+        # The editor table — single streamlined view (not 3 tabs)
+        editor_source = st.session_state.metadata_editor_df.copy()
+        editor_source["Sensitivity"] = [metadata_sensitivity(item) for item in editor_frame_to_metadata(editor_source)]
+        editor_source["Current handling"] = [metadata_handling(item) for item in editor_frame_to_metadata(editor_source)]
+        editor_source = editor_source[
+            ["column", "Sensitivity", "data_type", "control_action", "include", "Current handling", "notes"]
+        ]
+        editor_source = editor_source.sort_values(
+            by=["Sensitivity", "column"],
+            key=lambda series: series.map({"Restricted": 0, "Sensitive": 1, "Operational": 2}).fillna(series),
+        )
+
+        if can_edit:
+            edited = st.data_editor(
+                editor_source,
                 hide_index=True,
                 use_container_width=True,
                 num_rows="fixed",
-                key="metadata_quick_editor_widget",
+                key="metadata_editor_unified",
                 column_config={
-                    "column": st.column_config.TextColumn("Field", disabled=True),
-                    "Sensitivity": st.column_config.TextColumn("Sensitivity", disabled=True),
-                    "data_type": st.column_config.TextColumn("Field type", disabled=True),
-                    "control_action": st.column_config.SelectboxColumn("Field action", options=ALL_CONTROL_ACTIONS),
-                    "include": st.column_config.CheckboxColumn("Include"),
-                    "Current handling": st.column_config.TextColumn("Current handling", disabled=True, width="large"),
-                    "notes": st.column_config.TextColumn("Notes", width="large"),
+                    "column": st.column_config.TextColumn("Field", disabled=True, width="medium"),
+                    "Sensitivity": st.column_config.TextColumn("Sensitivity", disabled=True, width="small"),
+                    "data_type": st.column_config.TextColumn("Type", disabled=True, width="small"),
+                    "control_action": st.column_config.SelectboxColumn("Action", options=ALL_CONTROL_ACTIONS, width="medium"),
+                    "include": st.column_config.CheckboxColumn("Include", width="small"),
+                    "Current handling": st.column_config.TextColumn("Handling summary", disabled=True, width="large"),
+                    "notes": st.column_config.TextColumn("Notes", width="medium"),
                 },
             )
 
+            # Propagate edits back to session state
             updated_frame = st.session_state.metadata_editor_df.copy()
-            for _, row in quick_editor.iterrows():
+            for _, row in edited.iterrows():
                 mask = updated_frame["column"] == row["column"]
                 if not mask.any():
                     continue
@@ -4907,265 +5014,191 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 st.session_state.metadata_editor_df = updated_frame
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
+        else:
+            # Read-only view for manager/reviewer or when locked
+            st.dataframe(editor_source, use_container_width=True, hide_index=True)
+            if is_locked and can_edit:
+                st.caption("_Package is with reviewer — start a revised draft if changes are needed._")
 
-            latest_metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-            action_counts = pd.Series([item["control_action"] for item in latest_metadata]).value_counts()
-            st.dataframe(
-                pd.DataFrame({"Field action": action_counts.index, "Fields": action_counts.values}),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.dataframe(build_quick_controls_frame(metadata), use_container_width=True, hide_index=True)
-    with edit_tab:
-        if has_permission("edit_metadata") and not metadata_edit_locked:
-            editor = st.data_editor(
-                st.session_state.metadata_editor_df,
-                hide_index=True,
-                use_container_width=True,
-                num_rows="fixed",
-                key="metadata_editor_widget",
-                column_config={
-                    "column": st.column_config.TextColumn("Field", disabled=True),
-                    "include": st.column_config.CheckboxColumn("Include"),
-                    "data_type": st.column_config.SelectboxColumn(
-                        "Field type",
-                        options=["identifier", "numeric", "categorical", "binary", "date"],
-                    ),
-                    "strategy": st.column_config.SelectboxColumn(
-                        "Generation rule",
-                        options=["new_token", "sample_plus_noise", "sample_category", "sample_plus_jitter"],
-                    ),
-                    "control_action": st.column_config.SelectboxColumn("Field action", options=ALL_CONTROL_ACTIONS),
-                    "nullable": st.column_config.CheckboxColumn("Nullable"),
-                    "notes": st.column_config.TextColumn("Notes", width="large"),
-                },
-            )
-            normalized_editor = normalize_metadata_frame(editor)
-            if not normalized_editor.equals(st.session_state.metadata_editor_df):
-                st.session_state.metadata_editor_df = normalized_editor
-                st.session_state.settings_reviewed = False
-                st.session_state.settings_review_signature = None
-        else:
-            st.dataframe(st.session_state.metadata_editor_df, use_container_width=True, hide_index=True)
-    with record_tab:
-        if active_package is None and not st.session_state.metadata_package_log:
-            st.info("No submitted package yet.")
-        else:
-            if active_package is not None:
-                st.dataframe(build_metadata_review_frame(active_package["snapshot"]), use_container_width=True, hide_index=True)
-                if active_package.get("review_note"):
-                    st.info(
-                        f"Manager note from {active_package.get('reviewed_by') or 'reviewer'}"
-                        f"{f' at {active_package.get('reviewed_at')}' if active_package.get('reviewed_at') else ''}: "
-                        f"{active_package.get('review_note')}"
-                    )
-            if st.session_state.metadata_package_log:
-                st.markdown("**Package history**")
-                st.dataframe(build_metadata_package_log_frame(), use_container_width=True, hide_index=True)
-
+    # Refresh metadata after edits
     metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
     sync_metadata_workflow_state(metadata)
     current_signature = build_metadata_signature(metadata)
 
-    action_cols = st.columns([0.9, 1.1], gap="large")
-    mark_disabled = metadata_edit_locked and st.session_state.metadata_status in {"In Review", "Approved"}
-    if action_cols[0].button("Mark data settings reviewed", type="primary", use_container_width=True, disabled=mark_disabled):
-        st.session_state.settings_reviewed = True
-        st.session_state.settings_review_signature = current_signature
-        record_audit_event("Data settings reviewed", "Field-level settings were finalized for submission.", status="Completed")
-        rerun_with_persist()
-
-    can_continue = st.session_state.settings_reviewed and st.session_state.settings_review_signature == current_signature
-    if action_cols[1].button("Continue to Reviewer Sign-off", use_container_width=True, disabled=not can_continue):
-        st.session_state.current_step = 3
-        st.rerun()
-
-    return metadata, controls
-
-
-def render_step_four(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    render_section_header(3, "Transfer the analyst-confirmed package to the reviewer queue.")
-    render_previous_step_control(3)
-
-    if not has_active_dataset():
-        st.info("Confirm metadata assumptions before initiating reviewer handoff.")
-        return metadata, controls
-
-    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    sync_metadata_workflow_state(metadata)
-    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    active_package = active_metadata_package_record(metadata)
-    review_package = current_review_package_record()
-    package_summary = summarize_metadata_package(metadata)
-
-    # Review package summary (replaces KPI metric tiles with governance handoff card)
-    _step4_classified = classify_hygiene_issues(st.session_state.hygiene) if st.session_state.get("hygiene") else []
-    _step4_blockers = sum(1 for c in _step4_classified if c.get("classification") == "blocker")
-    _step4_warnings = sum(1 for c in _step4_classified if c.get("classification") == "warning")
-
-    render_review_package_summary(
-        request_id=str(st.session_state.active_request_id or ""),
-        settings_reviewed=bool(st.session_state.settings_reviewed),
-        metadata_status=st.session_state.metadata_status,
-        package_id=(review_package["package_id"] if review_package else (active_package["package_id"] if active_package else "")),
-        dataset_label=current_dataset_label(),
-        included_fields=int(package_summary["included_fields"]),
-        sensitive_fields=int(package_summary["restricted_fields"] + package_summary["sensitive_fields"]),
-        targeted_actions=int(package_summary["targeted_actions"]),
-        current_owner="Data Analyst" if st.session_state.metadata_status in ("Draft", "Changes Requested") else "Manager / Reviewer",
-        next_owner="Manager / Reviewer" if st.session_state.metadata_status in ("Draft", "Changes Requested", "In Review") else "Data Analyst",
-        blockers_remaining=_step4_blockers,
-        warnings_remaining=_step4_warnings,
-        submitted_by=st.session_state.metadata_submitted_by if review_package else None,
-        submitted_at=st.session_state.metadata_submitted_at if review_package else None,
-    )
-
-    if st.session_state.metadata_status == "Approved" and active_package is not None:
-        st.success(
-            f"Reviewer sign-off complete. Approved by {active_package['approved_by']} at {active_package['approved_at']}. Generation unlocked."
-        )
-    elif st.session_state.metadata_status == "In Review" and review_package is not None:
-        st.info(
-            f"Package {review_package['package_id']} awaiting reviewer sign-off. Submitted by {review_package['submitted_by']} at {review_package['submitted_at']}."
-        )
-    elif st.session_state.metadata_status == "Changes Requested" and active_package is not None:
-        st.warning(active_package.get("review_note") or "Reviewer returned the package — changes requested before approval.")
-    elif st.session_state.metadata_status == "Rejected" and active_package is not None:
-        st.error(active_package.get("review_note") or "Reviewer rejected the submitted package.")
-
-    left_col, right_col = st.columns([1.15, 0.85], gap="large")
-    with left_col:
-        with st.container(border=True):
-            st.markdown("**Request summary**")
-            request_summary = pd.DataFrame(
-                [
-                    {"Item": "Request id", "Value": active_package["package_id"] if active_package else "Draft"},
-                    {"Item": "Dataset", "Value": current_dataset_label()},
-                    {"Item": "Included fields", "Value": package_summary["included_fields"]},
-                    {"Item": "Sensitive fields", "Value": package_summary["restricted_fields"] + package_summary["sensitive_fields"]},
-                    {"Item": "Targeted actions", "Value": package_summary["targeted_actions"]},
-                ]
-            )
-            st.dataframe(request_summary, use_container_width=True, hide_index=True)
-            st.dataframe(build_metadata_review_frame(metadata), use_container_width=True, hide_index=True)
-
-    with right_col:
-        with st.container(border=True):
-            st.markdown("**Decision panel**")
-            if has_permission("submit_metadata"):
-                if st.session_state.metadata_status == "Approved":
-                    st.success("This request is already approved.")
-                elif st.session_state.metadata_status == "In Review":
-                    st.info("This request is already with the Manager / Reviewer.")
-                else:
-                    submit_disabled = not st.session_state.settings_reviewed
-                    if st.button("Submit for reviewer sign-off", type="primary", use_container_width=True, disabled=submit_disabled):
-                        st.session_state.metadata_status = "In Review"
-                        st.session_state.metadata_submitted_by = st.session_state.current_role
-                        st.session_state.metadata_submitted_at = format_timestamp()
-                        st.session_state.metadata_approved_by = None
-                        st.session_state.metadata_approved_at = None
-                        st.session_state.metadata_review_note = None
-                        st.session_state.metadata_reviewed_by = None
-                        st.session_state.metadata_reviewed_at = None
-                        st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
-                        submitted_record = register_metadata_submission(metadata)
-                        clear_generation_outputs()
-                        record_audit_event(
-                            "Request submitted for review",
-                            f"{submitted_record['package_id']} submitted by {st.session_state.current_role}.",
-                            status="Submitted",
-                        )
-                        rerun_with_persist()
-                    if submit_disabled:
-                        st.caption("Review the data settings first before submitting this request.")
-            else:
-                review_note = st.text_area(
-                    "Review note",
-                    placeholder="Add approval context or revision guidance for the Data Analyst.",
-                    key="manager_review_note",
+    # ─────────────────────────────────────────────────────────────
+    # E. ACTION BAR (role-aware — analyst submits / manager approves)
+    # ─────────────────────────────────────────────────────────────
+    with st.container(border=True, key="action_bar_panel"):
+        if can_submit:
+            # ANALYST view
+            if status == "Approved":
+                st.markdown(
+                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved</div>'
+                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package {active_package["package_id"] if active_package else ""} approved. You can now proceed to generate the synthetic package.</div>',
+                    unsafe_allow_html=True,
                 )
-                if review_package is None:
-                    st.info("No request is waiting for your review right now.")
-                else:
-                    action_cols = st.columns(3)
-                    if action_cols[0].button("Approve request", type="primary", use_container_width=True):
-                        st.session_state.metadata_status = "Approved"
-                        st.session_state.metadata_approved_by = st.session_state.current_role
-                        st.session_state.metadata_approved_at = format_timestamp()
-                        st.session_state.metadata_review_note = review_note.strip() or None
-                        st.session_state.metadata_reviewed_by = st.session_state.current_role
-                        st.session_state.metadata_reviewed_at = format_timestamp()
-                        st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
-                        approved_record = register_metadata_approval(metadata)
-                        if review_note.strip():
-                            approved_record["review_note"] = review_note.strip()
-                        record_audit_event(
-                            "Request approved",
-                            f"{approved_record['package_id']} approved by {st.session_state.current_role}.",
-                            status="Approved",
-                        )
-                        rerun_with_persist()
-                    change_disabled = not review_note.strip()
-                    if action_cols[1].button("Request changes", use_container_width=True, disabled=change_disabled):
-                        feedback_record = register_metadata_feedback(metadata, "Changes Requested", review_note)
-                        st.session_state.metadata_status = "Changes Requested"
-                        st.session_state.metadata_review_note = review_note.strip()
-                        st.session_state.metadata_reviewed_by = st.session_state.current_role
-                        st.session_state.metadata_reviewed_at = format_timestamp()
-                        st.session_state.metadata_approved_by = None
-                        st.session_state.metadata_approved_at = None
-                        record_audit_event(
-                            "Request changes requested",
-                            f"{feedback_record['package_id'] if feedback_record else 'Current package'} returned with manager feedback.",
-                            status="Returned",
-                        )
-                        rerun_with_persist()
-                    if action_cols[2].button("Reject request", use_container_width=True, disabled=change_disabled):
-                        feedback_record = register_metadata_feedback(metadata, "Rejected", review_note)
-                        st.session_state.metadata_status = "Rejected"
-                        st.session_state.metadata_review_note = review_note.strip()
-                        st.session_state.metadata_reviewed_by = st.session_state.current_role
-                        st.session_state.metadata_reviewed_at = format_timestamp()
-                        st.session_state.metadata_approved_by = None
-                        st.session_state.metadata_approved_at = None
-                        record_audit_event(
-                            "Request rejected",
-                            f"{feedback_record['package_id'] if feedback_record else 'Current package'} rejected by {st.session_state.current_role}.",
-                            status="Rejected",
-                        )
-                        rerun_with_persist()
+                action_cols = st.columns([1, 1], gap="small")
+                if action_cols[0].button("Revise draft", use_container_width=True):
+                    st.session_state.metadata_status = "Draft"
+                    st.session_state.settings_reviewed = False
+                    st.session_state.settings_review_signature = None
+                    record_audit_event("Metadata draft reopened", "A revised working draft was opened.", status="Updated")
+                    rerun_with_persist()
+                if action_cols[1].button("Continue to generation →", type="primary", use_container_width=True):
+                    st.session_state.current_step = 3
+                    st.rerun()
 
-            history_cols = st.columns(2)
-            history_cols[0].metric("Submitted by", st.session_state.metadata_submitted_by or "Not submitted")
-            history_cols[1].metric("Submitted at", st.session_state.metadata_submitted_at or "Pending")
-            history_cols[0].metric("Reviewed by", st.session_state.metadata_reviewed_by or "Not reviewed")
-            history_cols[1].metric("Approved at", st.session_state.metadata_approved_at or "Pending")
+            elif status == "In Review":
+                st.markdown(
+                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">With reviewer</div>'
+                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package submitted to Manager / Reviewer. Awaiting sign-off.</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("Revise draft", use_container_width=True, help="Start a new revised draft (only if changes are needed)"):
+                    st.session_state.metadata_status = "Draft"
+                    st.session_state.settings_reviewed = False
+                    st.session_state.settings_review_signature = None
+                    record_audit_event("Metadata draft reopened", "A revised working draft was opened.", status="Updated")
+                    rerun_with_persist()
 
+            else:
+                # Draft, Changes Requested, Rejected
+                st.markdown(
+                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Submit for review</div>'
+                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Mark settings reviewed, then submit the metadata package to the Manager / Reviewer for sign-off.</div>',
+                    unsafe_allow_html=True,
+                )
+
+                settings_ok = st.session_state.settings_reviewed and st.session_state.settings_review_signature == current_signature
+
+                action_cols = st.columns([1, 1, 1], gap="small")
+                if action_cols[0].button(
+                    "Mark settings reviewed" if not settings_ok else "✓ Settings reviewed",
+                    use_container_width=True,
+                    disabled=settings_ok,
+                ):
+                    st.session_state.settings_reviewed = True
+                    st.session_state.settings_review_signature = current_signature
+                    record_audit_event("Data settings reviewed", "Field-level settings finalized.", status="Completed")
+                    rerun_with_persist()
+
+                if action_cols[1].button(
+                    "Submit to reviewer",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=not settings_ok,
+                ):
+                    st.session_state.metadata_status = "In Review"
+                    st.session_state.metadata_submitted_by = st.session_state.current_role
+                    st.session_state.metadata_submitted_at = format_timestamp()
+                    st.session_state.metadata_approved_by = None
+                    st.session_state.metadata_approved_at = None
+                    st.session_state.metadata_review_note = None
+                    st.session_state.metadata_reviewed_by = None
+                    st.session_state.metadata_reviewed_at = None
+                    st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
+                    submitted_record = register_metadata_submission(metadata)
+                    clear_generation_outputs()
+                    record_audit_event(
+                        "Request submitted for review",
+                        f"{submitted_record['package_id']} submitted by {st.session_state.current_role}.",
+                        status="Submitted",
+                    )
+                    rerun_with_persist()
+
+                if action_cols[2].button("← Back to Scan", use_container_width=True):
+                    st.session_state.current_step = 1
+                    st.rerun()
+
+        elif can_approve:
+            # MANAGER/REVIEWER view
+            if status in ("Draft", "Rejected"):
+                st.info("No request is waiting for review right now.")
+            elif status == "Approved":
+                st.markdown(
+                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved</div>'
+                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">You approved this request. It is now in the analyst queue for generation.</div>',
+                    unsafe_allow_html=True,
+                )
+            elif status == "In Review":
+                st.markdown(
+                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Awaiting your review</div>'
+                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.6rem;">Review the field settings above, then approve or request changes below.</div>',
+                    unsafe_allow_html=True,
+                )
+
+                review_note = st.text_area(
+                    "Review note (required for request changes / reject)",
+                    placeholder="Add approval context or revision guidance for the Data Analyst...",
+                    key="manager_review_note",
+                    height=90,
+                )
+
+                action_cols = st.columns([1, 1, 1], gap="small")
+                if action_cols[0].button("Approve", type="primary", use_container_width=True):
+                    st.session_state.metadata_status = "Approved"
+                    st.session_state.metadata_approved_by = st.session_state.current_role
+                    st.session_state.metadata_approved_at = format_timestamp()
+                    st.session_state.metadata_review_note = review_note.strip() or None
+                    st.session_state.metadata_reviewed_by = st.session_state.current_role
+                    st.session_state.metadata_reviewed_at = format_timestamp()
+                    st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
+                    approved_record = register_metadata_approval(metadata)
+                    if review_note.strip():
+                        approved_record["review_note"] = review_note.strip()
+                    record_audit_event(
+                        "Request approved",
+                        f"{approved_record['package_id']} approved by {st.session_state.current_role}.",
+                        status="Approved",
+                    )
+                    rerun_with_persist()
+
+                change_disabled = not review_note.strip()
+                if action_cols[1].button("Request changes", use_container_width=True, disabled=change_disabled):
+                    feedback_record = register_metadata_feedback(metadata, "Changes Requested", review_note)
+                    st.session_state.metadata_status = "Changes Requested"
+                    st.session_state.metadata_review_note = review_note.strip()
+                    st.session_state.metadata_reviewed_by = st.session_state.current_role
+                    st.session_state.metadata_reviewed_at = format_timestamp()
+                    st.session_state.metadata_approved_by = None
+                    st.session_state.metadata_approved_at = None
+                    record_audit_event(
+                        "Request changes requested",
+                        f"{feedback_record['package_id'] if feedback_record else 'Current package'} returned with feedback.",
+                        status="Returned",
+                    )
+                    rerun_with_persist()
+
+                if action_cols[2].button("Reject", use_container_width=True, disabled=change_disabled):
+                    feedback_record = register_metadata_feedback(metadata, "Rejected", review_note)
+                    st.session_state.metadata_status = "Rejected"
+                    st.session_state.metadata_review_note = review_note.strip()
+                    st.session_state.metadata_reviewed_by = st.session_state.current_role
+                    st.session_state.metadata_reviewed_at = format_timestamp()
+                    st.session_state.metadata_approved_by = None
+                    st.session_state.metadata_approved_at = None
+                    record_audit_event(
+                        "Request rejected",
+                        f"{feedback_record['package_id'] if feedback_record else 'Current package'} rejected.",
+                        status="Rejected",
+                    )
+                    rerun_with_persist()
+            elif status == "Changes Requested":
+                st.info(f"Waiting on the Data Analyst to submit a revised draft based on your feedback.")
+
+    # ─────────────────────────────────────────────────────────────
+    # F. PACKAGE HISTORY (collapsible, for audit reference)
+    # ─────────────────────────────────────────────────────────────
     if st.session_state.metadata_package_log:
-        st.markdown("**Request history**")
-        st.dataframe(build_metadata_package_log_frame(), use_container_width=True, hide_index=True)
-
-    footer_cols = st.columns([0.9, 1.1], gap="large")
-    if footer_cols[0].button("Return to Metadata Assumptions", use_container_width=True):
-        st.session_state.current_step = 2
-        st.rerun()
-    if footer_cols[1].button(
-        "Continue to Generate Synthetic Package",
-        type="primary",
-        use_container_width=True,
-        disabled=st.session_state.metadata_status != "Approved",
-    ):
-        st.session_state.current_step = 4
-        st.rerun()
+        with st.expander(f"Package history · {len(st.session_state.metadata_package_log)} event(s)", expanded=False):
+            st.dataframe(build_metadata_package_log_frame(), use_container_width=True, hide_index=True)
 
     return metadata, controls
 
 
 def render_step_five(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(4, "Synthesize the approved metadata package. No source records copied.")
-    render_previous_step_control(4)
+    render_section_header(3, "Synthesize the approved metadata package. No source records copied.")
+    render_previous_step_control(3)
 
     if st.session_state.metadata_status != "Approved":
         st.warning("Generation gated — awaiting reviewer sign-off on the metadata package.")
@@ -5299,17 +5332,17 @@ def render_step_five(metadata: list[dict[str, Any]], controls: dict[str, Any]) -
         st.dataframe(pd.DataFrame(build_generation_control_rows(controls)), use_container_width=True, hide_index=True)
 
     footer_cols = st.columns([0.9, 1.1], gap="large")
-    if has_permission("rollback") and footer_cols[0].button("Return to Reviewer Sign-off", use_container_width=True):
-        st.session_state.current_step = 3
+    if has_permission("rollback") and footer_cols[0].button("Return to Review & Approve Metadata", use_container_width=True):
+        st.session_state.current_step = 2
         st.rerun()
     if footer_cols[1].button("Continue to Release Synthetic Package", type="primary", use_container_width=True):
-        st.session_state.current_step = 5
+        st.session_state.current_step = 4
         st.rerun()
 
 
 def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(5, "Release the verified synthetic package for controlled distribution.")
-    render_previous_step_control(5)
+    render_section_header(4, "Release the verified synthetic package for controlled distribution.")
+    render_previous_step_control(4)
 
     if st.session_state.synthetic_df is None or st.session_state.validation is None:
         st.warning("Synthetic package not yet available for release.")
@@ -5448,7 +5481,7 @@ def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) ->
     st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
     footer_cols = st.columns([0.35, 0.65], gap="large")
     if has_permission("rollback") and footer_cols[0].button("Return to Generate Package", use_container_width=True):
-        st.session_state.current_step = 4
+        st.session_state.current_step = 3
         st.rerun()
     if footer_cols[1].button(
         "Continue to Analyze Synthetic Data  →",
@@ -5456,13 +5489,13 @@ def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) ->
         use_container_width=True,
         disabled=st.session_state.synthetic_df is None,
     ):
-        st.session_state.current_step = 6
+        st.session_state.current_step = 5
         st.rerun()
 
 
 def render_step_seven(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(6, "Analyze the released synthetic package. Source data remains inside governance.")
-    render_previous_step_control(6)
+    render_section_header(5, "Analyze the released synthetic package. Source data remains inside governance.")
+    render_previous_step_control(5)
 
     if st.session_state.synthetic_df is None or st.session_state.validation is None:
         st.warning("Generate and verify synthetic data before analysis.")
@@ -5710,7 +5743,10 @@ def main() -> None:
         # Step 0: Agent Decision Log is rendered INSIDE render_step_one at the proper position
         pass
     elif current_step == 1:
-        # Step 1 (Scan Data): Agent Decision Log is rendered at the BOTTOM inside render_step_two
+        # Step 1 (Scan Data): No Agent Decision Log — pure data exploration
+        pass
+    elif current_step == 2:
+        # Step 2 (Review Metadata): No Agent Decision Log — clean review & approve flow
         pass
     else:
         # Steps 1+: full consolidated decision log with readiness engine
@@ -5754,12 +5790,10 @@ def main() -> None:
     elif current_step == 2:
         metadata, controls = render_step_three()
     elif current_step == 3:
-        metadata, controls = render_step_four(metadata, controls)
-    elif current_step == 4:
         render_step_five(metadata, controls)
-    elif current_step == 5:
+    elif current_step == 4:
         render_step_six(metadata, controls)
-    elif current_step == 6:
+    elif current_step == 5:
         render_step_seven(metadata, controls)
 
     persist_shared_workspace_state()

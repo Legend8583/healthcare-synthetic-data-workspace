@@ -3735,6 +3735,27 @@ def render_login_screen() -> None:
 
     left_col, right_col = st.columns([1, 1], gap="medium")
 
+    # Inject highest-specificity placeholder style — placed after all other styles to win cascade
+    st.markdown(
+        """
+        <style>
+            html body .login-right-panel .stTextInput input::placeholder,
+            html body .login-right-panel input::placeholder {
+                color: #94A3B8 !important;
+                -webkit-text-fill-color: #94A3B8 !important;
+                opacity: 1 !important;
+            }
+            html body .login-right-panel .stTextInput input::-webkit-input-placeholder,
+            html body .login-right-panel input::-webkit-input-placeholder {
+                color: #94A3B8 !important;
+                -webkit-text-fill-color: #94A3B8 !important;
+                opacity: 1 !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # ── LEFT: brand panel (single self-contained HTML block) ──
     logo_html = (
         f'<img src="{logo_uri}" alt="Southlake Health" class="login-brand-logo" />'

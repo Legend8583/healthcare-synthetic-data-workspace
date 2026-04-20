@@ -657,10 +657,12 @@ def inject_styles() -> None:
                 border-radius: 28px;
                 padding: 1.8rem 1.85rem;
                 box-shadow: var(--shadow);
-                min-height: 540px;
+                min-height: 640px;
+                height: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
+                box-sizing: border-box;
             }
 
             .login-brand-lockup {
@@ -670,10 +672,11 @@ def inject_styles() -> None:
             }
 
             .login-logo {
-                width: 290px;
+                width: 420px;
                 max-width: 100%;
                 height: auto;
                 object-fit: contain;
+                margin-bottom: 0.4rem;
             }
 
             .login-kicker {
@@ -771,10 +774,12 @@ def inject_styles() -> None:
                 border-radius: 24px;
                 padding: 1.35rem 1.4rem 1.2rem 1.4rem;
                 box-shadow: var(--shadow);
-                min-height: 540px;
+                min-height: 640px;
+                height: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
+                box-sizing: border-box;
             }
 
             .login-card-header {
@@ -3534,6 +3539,44 @@ def render_stakeholder_group_overview() -> None:
 def render_login_screen() -> None:
     logo_uri = load_logo_data_uri()
     stakeholder_html = build_stakeholder_group_overview_html()
+
+    # Fix input rendering + equalize column heights on the login screen
+    st.markdown(
+        """
+        <style>
+            /* Make both login columns stretch to equal heights */
+            div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+                height: 100%;
+            }
+            /* Ensure form inputs are fully rendered (fix label clipping) */
+            div[data-testid="stForm"] .stTextInput > div > div > input,
+            div[data-testid="stForm"] .stSelectbox > div > div {
+                min-height: 42px !important;
+                padding: 0.55rem 0.75rem !important;
+                box-sizing: border-box !important;
+                font-size: 0.95rem !important;
+            }
+            div[data-testid="stForm"] .stTextInput,
+            div[data-testid="stForm"] .stSelectbox {
+                margin-bottom: 0.85rem !important;
+            }
+            div[data-testid="stForm"] label,
+            div[data-testid="stForm"] label p {
+                font-size: 0.88rem !important;
+                font-weight: 500 !important;
+                color: var(--text) !important;
+                margin-bottom: 0.25rem !important;
+                padding-bottom: 0 !important;
+            }
+            /* Stretch right-side container (the Streamlit border container) */
+            div[data-testid="column"]:nth-of-type(2) div[data-testid="stVerticalBlockBorderWrapper"] {
+                height: 100%;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     intro_col, form_col = st.columns([1.08, 0.92], gap="large")
     with intro_col:
         st.markdown(

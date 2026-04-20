@@ -3571,12 +3571,14 @@ def render_login_screen() -> None:
             }
             .login-left-inner { position: relative; z-index: 1; }
             .login-brand-logo {
-                width: 220px;
-                max-width: 70%;
+                width: 280px;
+                max-width: 80%;
                 height: auto;
-                margin-bottom: 2rem;
-                filter: brightness(0) invert(1);
-                opacity: 0.95;
+                margin-bottom: 1.8rem;
+                background: rgba(255,255,255,0.98);
+                padding: 0.7rem 1rem;
+                border-radius: 12px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             }
             .login-brand-kicker {
                 font-size: 0.72rem;
@@ -3607,16 +3609,17 @@ def render_login_screen() -> None:
                 margin-bottom: 0.9rem;
             }
             .login-feature-icon {
-                flex: 0 0 28px;
-                height: 28px;
+                flex: 0 0 32px;
+                height: 32px;
                 border-radius: 8px;
-                background: rgba(25,203,197,0.18);
+                background: #19CBC5;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: #19CBC5;
-                font-weight: 700;
-                font-size: 0.85rem;
+                color: #FFFFFF;
+                font-weight: 900;
+                font-size: 1rem;
+                box-shadow: 0 2px 6px rgba(25,203,197,0.35);
             }
             .login-feature-title {
                 font-size: 0.92rem;
@@ -3652,9 +3655,13 @@ def render_login_screen() -> None:
             /* Input styling */
             .login-right-panel [data-baseweb="input"] {
                 border-radius: 10px !important;
-                border: 1px solid #E2E8F0 !important;
-                min-height: 46px !important;
+                border: 1.5px solid #CBD5E1 !important;
+                min-height: 48px !important;
                 box-sizing: border-box !important;
+                background: #FFFFFF !important;
+            }
+            .login-right-panel [data-baseweb="input"]:hover {
+                border-color: #94A3B8 !important;
             }
             .login-right-panel [data-baseweb="input"]:focus-within {
                 border-color: #0B5EA8 !important;
@@ -3662,7 +3669,7 @@ def render_login_screen() -> None:
             }
             .login-right-panel [data-baseweb="input"] input,
             .login-right-panel [data-baseweb="base-input"] input {
-                padding: 0.65rem 0.9rem !important;
+                padding: 0.7rem 0.9rem !important;
                 font-size: 0.95rem !important;
                 line-height: 1.5 !important;
                 color: #0F172A !important;
@@ -3693,12 +3700,13 @@ def render_login_screen() -> None:
                 font-size: 0.8rem;
                 color: #94A3B8;
                 line-height: 1.55;
+                text-align: center;
             }
             .login-footer a {
                 color: #0B5EA8;
                 text-decoration: none;
                 font-weight: 500;
-                margin-right: 1.2rem;
+                margin: 0 0.6rem;
             }
             .login-footer code {
                 background: #F1F5F9;
@@ -3774,7 +3782,7 @@ def render_login_screen() -> None:
         )
 
         work_email = st.text_input(
-            "Work email",
+            "Work Email",
             placeholder="name@southlake.ca",
             key="login_email_input",
         )
@@ -3785,7 +3793,7 @@ def render_login_screen() -> None:
         )
 
         submitted = st.button(
-            "Continue",
+            "Sign In",
             type="primary",
             use_container_width=True,
             key="login_submit_btn",
@@ -3831,11 +3839,16 @@ def render_login_screen() -> None:
         st.markdown(
             """
             <div class="login-footer">
-                <div style="margin-bottom:0.6rem;">
+                <div style="margin-bottom:0.8rem;">
                     <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
                     <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access">Request access</a>
                 </div>
-                Demo credential: <code>test</code> &middot; Authorized users only. Activity is logged for compliance.
+                <div style="margin-bottom:0.5rem;">
+                    Demo credential for all access profiles: <code>test</code>
+                </div>
+                <div style="font-size:0.74rem;color:#B0BAC4;">
+                    Authorized users only. Activity is logged for compliance.
+                </div>
             </div>
             </div>
             """,

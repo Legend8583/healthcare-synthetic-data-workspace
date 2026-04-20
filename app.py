@@ -4063,71 +4063,216 @@ def render_role_restriction(message: str) -> None:
 def render_step_one(metadata: list[dict[str, Any]]) -> None:
     render_section_header(0, "Register the source dataset into the governed workflow.")
 
-    # ── PRIMARY ACTION: Upload (moved to top for visibility) ──
-    with st.container(border=True):
-        st.markdown(
-            """
-            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
-                <div style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(11,94,168,0.1);color:#0B5EA8;font-weight:700;font-size:0.85rem;">1</div>
-                <div style="font-size:1.05rem;font-weight:600;color:#0F172A;">Upload source dataset</div>
+    # ─────────────────────────────────────────────────────────────
+    # A. COMPACT STATUS STRIP
+    # ─────────────────────────────────────────────────────────────
+    snapshot = capture_workflow_snapshot()
+    status_value = request_status_from_snapshot(snapshot)
+    has_data = has_active_dataset()
+    active_request = st.session_state.active_request_id or "Not yet created"
+
+    # Status chip color based on state
+    if has_data:
+        status_chip_color = "#136B48"; status_chip_bg = "#EDF9F3"
+    else:
+        status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.65rem 1rem;background:#F5F9FC;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:1.1rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:baseline;gap:0.4rem;">
+                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Request</span>
+                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;font-family:ui-monospace,monospace;">{active_request}</span>
             </div>
-            <div style="font-size:0.86rem;color:#668097;line-height:1.5;margin-bottom:0.85rem;">
-                Add the source CSV for this request. File details and preview will appear here after upload.
+            <div style="width:1px;height:18px;background:#CBD5E1;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.4rem;">
+                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Role</span>
+                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;">{st.session_state.current_role}</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div style="width:1px;height:18px;background:#CBD5E1;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.4rem;">
+                <span style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#668097;font-weight:600;">Step</span>
+                <span style="font-size:0.88rem;color:#0F172A;font-weight:500;">1 of {len(STEP_CONFIG)}</span>
+            </div>
+            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.25rem 0.65rem;background:{status_chip_bg};border-radius:999px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:{status_chip_color};"></span>
+                <span style="font-size:0.78rem;color:{status_chip_color};font-weight:600;">{status_value}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ─────────────────────────────────────────────────────────────
+    # B. PRIMARY TASK — UPLOAD + READINESS (two-column, upload dominant)
+    # ─────────────────────────────────────────────────────────────
+    task_cols = st.columns([1.35, 1], gap="large")
+
+    # ─── LEFT: Upload zone (primary) ───
+    with task_cols[0]:
+        if not has_data:
+            # EMPTY STATE — big call to action
+            st.markdown(
+                """
+                <div style="background:linear-gradient(180deg,#FFFFFF 0%,#F8FBFD 100%);
+                    border:2px dashed #93B4D0;border-radius:16px;padding:1.8rem 1.8rem 0.5rem 1.8rem;margin-bottom:0;">
+                    <div style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.3rem 0.7rem;background:rgba(11,94,168,0.08);border-radius:999px;margin-bottom:1rem;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:#0B5EA8;"></span>
+                        <span style="font-size:0.72rem;font-weight:700;color:#0B5EA8;text-transform:uppercase;letter-spacing:0.06em;">Primary action</span>
+                    </div>
+                    <h3 style="font-size:1.35rem;font-weight:600;color:#0F172A;margin:0 0 0.4rem 0;letter-spacing:-0.01em;line-height:1.25;">
+                        Start by uploading your source dataset
+                    </h3>
+                    <p style="font-size:0.92rem;color:#475569;line-height:1.55;margin:0 0 1.1rem 0;">
+                        Drop a CSV file from Southlake\'s operational system, or click to browse.
+                        The workspace will extract metadata and flag sensitive fields automatically.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            # UPLOADED STATE — compact replace card
+            st.markdown(
+                f"""
+                <div style="background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;padding:1rem 1.2rem;margin-bottom:0.8rem;display:flex;align-items:center;gap:0.9rem;">
+                    <div style="flex:0 0 36px;height:36px;border-radius:10px;background:#136B48;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;">&#10003;</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.1rem;">Dataset loaded</div>
+                        <div style="font-size:0.92rem;color:#0F172A;font-weight:600;">{current_dataset_label()}</div>
+                        <div style="font-size:0.78rem;color:#475569;margin-top:0.15rem;">
+                            {format_file_size(st.session_state.get("source_file_size")) or "size unknown"}
+                            &middot; {st.session_state.profile['summary']['rows']:,} rows
+                            &middot; {st.session_state.profile['summary']['columns']} columns
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
         if has_permission("upload"):
             uploaded_file = st.file_uploader(
-                "Upload CSV file",
+                "Upload source dataset" if not has_data else "Replace source dataset",
                 type=["csv"],
-                help="Upload the source dataset for this request.",
+                help="CSV only. Headers required in first row.",
                 label_visibility="collapsed",
             )
             if uploaded_file is not None:
                 current_signature = (uploaded_file.name, uploaded_file.size)
                 if st.session_state.get("uploaded_signature") != current_signature:
                     st.session_state.source_file_size = uploaded_file.size
-                    set_source_dataframe(load_csv_bytes(uploaded_file.getvalue()), f"Uploaded dataset • {uploaded_file.name}")
+                    set_source_dataframe(load_csv_bytes(uploaded_file.getvalue()), f"Uploaded dataset * {uploaded_file.name}")
                     st.session_state.uploaded_signature = current_signature
                     persist_shared_workspace_state()
                     st.rerun()
+
+            # File requirements helper (below uploader)
+            st.markdown(
+                """
+                <div style="display:flex;gap:1rem;margin-top:0.6rem;font-size:0.78rem;color:#668097;flex-wrap:wrap;">
+                    <span>&#128196; CSV format only</span>
+                    <span>&#9881;&#65039; Headers in first row</span>
+                    <span>&#128274; Source never leaves governance boundary</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
             render_role_restriction("This role cannot upload or replace the source dataset.")
 
-        # Loaded file card (visually unified with workspace style)
+    # ─── RIGHT: Submission readiness ───
+    with task_cols[1]:
+        checklist = build_submission_checklist()
+        completed = sum(1 for _, done in checklist)
+        total = len(checklist)
+        completed_count = sum(1 for _, done in checklist if done)
+        progress_pct = int((completed_count / total) * 100) if total else 0
+        is_ready = submission_ready()
+
+        # Color for progress
+        if completed_count == total:
+            progress_color = "#136B48"
+        elif completed_count > 0:
+            progress_color = "#0B5EA8"
+        else:
+            progress_color = "#94A3B8"
+
+        # Build inline checklist items
+        checklist_items_html = ""
+        for label, done in checklist:
+            if done:
+                icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;">&#10003;</span>'
+                label_style = "color:#475569;text-decoration:line-through;text-decoration-color:#B8C5D2;"
+            else:
+                icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#FFFFFF;border:1.5px solid #CBD5E1;display:inline-block;"></span>'
+                label_style = "color:#0F172A;font-weight:500;"
+            checklist_items_html += (
+                f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.55rem;">'
+                f'{icon_html}'
+                f'<span style="font-size:0.88rem;{label_style}">{label}</span>'
+                f'</div>'
+            )
+
+        missing = submission_missing_items()
+        if is_ready:
+            helper_msg = "All requirements met. You can submit this request."
+            helper_color = "#136B48"
+        elif missing:
+            helper_msg = f"Complete {missing[0].lower()} to continue."
+            helper_color = "#668097"
+        else:
+            helper_msg = "Upload required to continue."
+            helper_color = "#9C6A17"
+
         st.markdown(
             f"""
-            <div class="request-file-card">
-                <div class="request-file-kicker">Loaded file</div>
-                <div class="request-file-title">{current_dataset_label() if has_active_dataset() else "No dataset uploaded"}</div>
-                <div class="request-file-meta">{'Source dataset is ready in the workspace.' if has_active_dataset() else 'Upload a CSV to start this request.'}</div>
-                <div class="request-file-stats">
-                    <div class="request-file-stat">
-                        <div class="request-file-stat-label">File size</div>
-                        <div class="request-file-stat-value">{format_file_size(st.session_state.get("source_file_size")) if has_active_dataset() else "Pending"}</div>
-                    </div>
-                    <div class="request-file-stat">
-                        <div class="request-file-stat-label">Rows loaded</div>
-                        <div class="request-file-stat-value">{f"{st.session_state.profile['summary']['rows']:,}" if has_active_dataset() else "Pending"}</div>
-                    </div>
-                    <div class="request-file-stat">
-                        <div class="request-file-stat-label">Columns</div>
-                        <div class="request-file-stat-value">{st.session_state.profile['summary']['columns'] if has_active_dataset() else "Pending"}</div>
-                    </div>
+            <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:1.3rem 1.3rem 1.1rem 1.3rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem;">
+                    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;">Submission readiness</div>
+                    <div style="font-size:0.78rem;font-weight:600;color:{progress_color};">{completed_count} of {total}</div>
                 </div>
+                <div style="width:100%;height:6px;background:#F1F5F9;border-radius:999px;margin-bottom:1rem;overflow:hidden;">
+                    <div style="width:{progress_pct}%;height:100%;background:{progress_color};border-radius:999px;transition:width 0.3s ease;"></div>
+                </div>
+                {checklist_items_html}
+                <div style="font-size:0.8rem;color:{helper_color};margin-top:0.3rem;line-height:1.45;">{helper_msg}</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # ── Request details (moved below upload) ──
-    with st.container(border=True):
+        # Submit button area
+        st.markdown("<div style='height:0.7rem;'></div>", unsafe_allow_html=True)
+        if st.session_state.intake_confirmed:
+            st.success("Request entered the governed flow.", icon="&#9989;")
+            if st.button("Continue to Scan Source Data", type="primary", use_container_width=True):
+                st.session_state.current_step = 1
+                st.rerun()
+        else:
+            submit_clicked = st.button(
+                "Submit request" if is_ready else "Submit request (blocked)",
+                type="primary",
+                use_container_width=True,
+                disabled=not is_ready,
+                help=None if is_ready else f"Blocked until: {', '.join(submission_missing_items())}",
+            )
+            if submit_clicked:
+                st.session_state.intake_confirmed = True
+                record_audit_event("Request submitted", "Source workspace request was acknowledged and entered into the governed flow.", status="Completed")
+                st.session_state.current_step = 1
+                st.rerun()
+
+    # ─────────────────────────────────────────────────────────────
+    # C. REQUEST DETAILS (secondary — muted, narrower)
+    # ─────────────────────────────────────────────────────────────
+    st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+    details_cols = st.columns([1, 0.5], gap="large")
+    with details_cols[0]:
         st.markdown(
             """
-            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
-                <div style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(11,94,168,0.1);color:#0B5EA8;font-weight:700;font-size:0.85rem;">2</div>
-                <div style="font-size:1.05rem;font-weight:600;color:#0F172A;">Request details</div>
+            <div style="font-size:0.82rem;font-weight:600;color:#668097;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.4rem;">
+                Request details
             </div>
             """,
             unsafe_allow_html=True,
@@ -4137,123 +4282,56 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
                 "Project purpose",
                 key="project_purpose",
                 placeholder="Example: ED operational workflow modeling",
+                label_visibility="collapsed",
             )
+            st.caption("Describe how the synthetic data will be used. Required for submission.")
         else:
             render_role_restriction("This role can view the request summary but cannot edit request details.")
 
-    readiness_cols = st.columns([0.9, 1.1], gap="large")
-    with readiness_cols[0]:
-        # Styled intake summary — capsule cards matching the rest of the governed UI
-        rows_val = f"{st.session_state.profile['summary']['rows']:,}" if has_active_dataset() else "—"
-        cols_val = str(st.session_state.profile["summary"]["columns"]) if has_active_dataset() else "—"
-        sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata)) if has_active_dataset() else 0
-        status_val = request_status_from_snapshot(capture_workflow_snapshot())
-
-        if has_active_dataset():
-            helper_text = (
-                f"{sensitive_count} field(s) require sensitivity review before continuing."
-                if sensitive_count
-                else "No sensitive fields flagged for review."
-            )
-        else:
-            helper_text = "Upload a dataset to generate sensitivity review findings."
-
+    # ─────────────────────────────────────────────────────────────
+    # D. INTAKE SUMMARY (only shown after upload — otherwise hidden to keep empty state clean)
+    # ─────────────────────────────────────────────────────────────
+    if has_data:
+        sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
         # Accent colors for sensitive card
-        if sensitive_count == 0 and has_active_dataset():
+        if sensitive_count == 0:
             sens_accent = "#136B48"; sens_bg = "#EDF9F3"
-        elif sensitive_count > 0:
-            sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
         else:
-            sens_accent = "#668097"; sens_bg = "rgba(214,226,236,0.3)"
+            sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
 
         def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#08467D", bg: str = "#EBF1F7") -> str:
             return (
-                f'<div style="flex:1;min-width:0;padding:0.75rem 0.95rem;background:{bg};'
+                f'<div style="flex:1;min-width:140px;padding:0.8rem 1rem;background:{bg};'
                 f'border:1px solid {accent}22;border-radius:10px;">'
                 f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{accent};margin-bottom:0.2rem;">{kicker}</div>'
-                f'<div style="font-size:1.25rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
+                f'<div style="font-size:1.35rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
                 f'<div style="font-size:0.74rem;color:#668097;margin-top:0.15rem;line-height:1.35;">{detail}</div>'
                 f'</div>'
             )
 
+        st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
+        rows_val = f"{st.session_state.profile['summary']['rows']:,}"
+        cols_val = str(st.session_state.profile['summary']['columns'])
         intake_html = (
-            '<div class="action-shell" style="margin-bottom:0;">'
-            '<h4>Intake summary</h4>'
-            '<div style="display:flex;gap:0.55rem;flex-wrap:wrap;margin-bottom:0.5rem;">'
-            + _stat_capsule("Rows loaded", rows_val, "From uploaded CSV")
+            '<div style="margin-bottom:0.5rem;font-size:0.82rem;font-weight:600;color:#668097;text-transform:uppercase;letter-spacing:0.06em;">Dataset intake summary</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule("Rows", rows_val, "Loaded from CSV")
             + _stat_capsule("Columns", cols_val, "Fields detected")
-            + '</div>'
-            '<div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'
             + _stat_capsule(
                 "Sensitive fields",
-                str(sensitive_count) if has_active_dataset() else "—",
-                "Flagged for review",
+                str(sensitive_count),
+                "Flagged for review" if sensitive_count > 0 else "No PHI detected",
                 accent=sens_accent,
                 bg=sens_bg,
             )
-            + _stat_capsule("Request status", status_val, "Current workflow state")
+            + _stat_capsule(
+                "File size",
+                format_file_size(st.session_state.get("source_file_size")) or "—",
+                "Source dataset",
+            )
             + '</div>'
-            f'<div style="font-size:0.8rem;color:#668097;margin-top:0.7rem;line-height:1.5;">{helper_text}</div>'
-            '</div>'
         )
         st.markdown(intake_html, unsafe_allow_html=True)
-
-    with readiness_cols[1]:
-        with st.container(border=True):
-            st.markdown("**Before submission**")
-            checklist_html = "".join(
-                f"<div class='checklist-row {'done' if done else ''}'><span class='checklist-icon'>{'✓' if done else str(index + 1)}</span><span>{label}</span></div>"
-                for index, (label, done) in enumerate(build_submission_checklist())
-            )
-            st.markdown(f"<div class='checklist'>{checklist_html}</div>", unsafe_allow_html=True)
-            missing_items = submission_missing_items()
-            if missing_items:
-                st.caption(f"Still needed: {', '.join(missing_items)}.")
-            if st.session_state.intake_confirmed:
-                st.success("Source package registered. Ready for agent scan.")
-                if st.button("Continue to Scan Source Data", type="primary", use_container_width=True):
-                    st.session_state.current_step = 1
-                    st.rerun()
-            else:
-                submit_clicked = st.button(
-                    "Submit request",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=not submission_ready(),
-                )
-                if submit_clicked:
-                    st.session_state.intake_confirmed = True
-                    record_audit_event("Request submitted", "Source workspace request was acknowledged and entered into the governed flow.", status="Completed")
-                    st.session_state.current_step = 1
-                    st.rerun()
-
-    preview_tab, phi_tab, queue_tab = st.tabs(["Workspace preview", "Sensitive fields", "Request queue"])
-    with preview_tab:
-        if not has_active_dataset():
-            st.info("Upload a CSV to populate the workspace preview.")
-        elif has_permission("view_raw"):
-            st.dataframe(st.session_state.source_df.head(12), use_container_width=True, hide_index=True)
-        else:
-            summary_rows = [
-                {
-                    "Field": column,
-                    "Role": details["semantic_role"],
-                    "Missing %": details["missing_pct"],
-                    "Unique values": details["unique_count"],
-                }
-                for column, details in st.session_state.profile["columns"].items()
-            ]
-            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
-            st.caption("Row-level source access is restricted in this role.")
-    with phi_tab:
-        if not has_active_dataset():
-            st.info("Sensitive-field detection will appear after a dataset is uploaded.")
-        else:
-            st.dataframe(build_phi_detection_frame(st.session_state.profile, metadata), use_container_width=True, hide_index=True)
-    with queue_tab:
-        st.dataframe(build_request_queue_frame(), use_container_width=True, hide_index=True)
-        if has_permission("upload") and st.button("Clear all requests", use_container_width=True, key="clear_requests_step_one"):
-            schedule_request_queue_clear()
 
 
 def render_step_two() -> None:

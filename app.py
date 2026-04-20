@@ -4439,8 +4439,19 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
 
 def render_step_two() -> None:
-    render_section_header(1, "Review agent-classified hygiene findings and field sensitivity.")
-    render_previous_step_control(1)
+    # Simplified, polished header (no redundant "Step 2 · OWNER SYSTEM" kicker)
+    step_cfg = STEP_CONFIG[1]
+    st.markdown(
+        f'''
+        <div class="section-shell" style="margin-bottom:0.9rem;">
+            <h3 style="margin:0;">{step_cfg["title"]}</h3>
+            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
+                Review each data quality issue and apply fixes directly. Each fix is applied to the source dataset in place.
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
 
     if not has_active_dataset():
         st.info("Upload and submit a source dataset before running the scan.")
@@ -4449,7 +4460,6 @@ def render_step_two() -> None:
     # ─────────────────────────────────────────────────────────────
     # A. STATUS STRIP
     # ─────────────────────────────────────────────────────────────
-    snapshot = capture_workflow_snapshot()
     active_request = st.session_state.active_request_id or "Not yet created"
     is_reviewed = st.session_state.get("hygiene_reviewed", False)
 
@@ -4487,10 +4497,60 @@ def render_step_two() -> None:
     hygiene = st.session_state.hygiene
     missingness_frame = build_missingness_strategy_frame(st.session_state.profile)
     missingness_chart = missingness_frame[missingness_frame["Field"] != "No incomplete field"][["Field", "Missing %"]]
-    default_options = build_hygiene_option_defaults(hygiene)
+
+    # Concern → action mapping for one-click fixing
+    CONCERN_TO_ACTIONS = {
+        "Missingness": [
+            ("standardize_blank_strings", "Standardize blank strings as missing"),
+            ("fill_operational_gaps", "Fill common missing operational values"),
+        ],
+        "Duplicate rows": [
+            ("remove_duplicates", "Remove exact duplicate rows"),
+        ],
+        "Category normalization": [
+            ("normalize_categories", "Normalize category labels"),
+        ],
+        "Negative values": [
+            ("fix_negative_values", "Convert invalid negative values to missing"),
+        ],
+        "Invalid dates": [
+            ("repair_invalid_dates", "Convert invalid dates to missing"),
+        ],
+        "Outliers": [
+            ("cap_numeric_extremes", "Cap numeric extremes"),
+        ],
+    }
+
+    ALL_OPTION_KEYS = [k for actions in CONCERN_TO_ACTIONS.values() for (k, _) in actions] + ["group_rare_categories"]
+
+    def _apply_concerns_fix(concerns: list[str], audit_label: str) -> None:
+        """Apply only the actions tied to the given concern(s), preserving review flags."""
+        targeted = {k: False for k in ALL_OPTION_KEYS}
+        for concern in concerns:
+            for action_key, _ in CONCERN_TO_ACTIONS.get(concern, []):
+                targeted[action_key] = True
+
+        prev_intake = st.session_state.get("intake_confirmed", False)
+        prev_reviewed = st.session_state.get("hygiene_reviewed", False)
+        prev_actions = list(st.session_state.get("last_cleaning_actions") or [])
+
+        cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, targeted)
+        base_label = st.session_state.source_label.split(" * remediated")[0]
+        set_source_dataframe(cleaned_df, f"{base_label} * remediated")
+
+        st.session_state.intake_confirmed = prev_intake or True
+        st.session_state.hygiene_reviewed = prev_reviewed  # don\'t auto-confirm review
+        st.session_state.last_cleaning_actions = prev_actions + list(actions)
+
+        record_audit_event(
+            audit_label,
+            "; ".join(item["effect"] for item in actions),
+            status="Completed",
+        )
+        st.rerun()
 
     # ─────────────────────────────────────────────────────────────
-    # B. HYGIENE SUMMARY — capsule cards
+    # B. QUALITY SUMMARY (capsule cards)
     # ─────────────────────────────────────────────────────────────
     def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
         return (
@@ -4519,11 +4579,11 @@ def render_step_two() -> None:
 
     with st.container(border=True, key="hygiene_summary_panel"):
         st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Hygiene assessment</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Source quality overview</div>'
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Data quality summary</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Agent-assessed source overview</div>'
             '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
-            + _stat_capsule("Quality score", f"{quality_score}", "Agent-assessed dataset quality")
-            + _stat_capsule("High severity", str(high_sev), "Critical fixes required" if high_sev > 0 else "None flagged", accent=high_accent, bg=high_bg)
+            + _stat_capsule("Quality score", f"{quality_score}", "Higher is better (out of 100)")
+            + _stat_capsule("High severity", str(high_sev), "Critical fixes needed" if high_sev > 0 else "None flagged", accent=high_accent, bg=high_bg)
             + _stat_capsule("Medium severity", str(med_sev), "Cleanup recommended" if med_sev > 0 else "None flagged", accent=med_accent, bg=med_bg)
             + _stat_capsule("Duplicate rows", str(dup_rows), "Exact duplicates detected" if dup_rows > 0 else "No duplicates")
             + '</div>',
@@ -4531,33 +4591,8 @@ def render_step_two() -> None:
         )
 
     # ─────────────────────────────────────────────────────────────
-    # C. FINDINGS → REMEDIATION (unified panel — cause-to-effect UI)
+    # C. ISSUES & ONE-CLICK FIXES
     # ─────────────────────────────────────────────────────────────
-    # Map concern types to their remediation options
-    # Each concern can trigger 1 or more action options
-    CONCERN_TO_ACTIONS = {
-        "Missingness": [
-            ("standardize_blank_strings", "Standardize blank strings as missing", "Converts empty strings to null values"),
-            ("fill_operational_gaps", "Fill common missing operational values", "Imputes missing values using median / mode"),
-        ],
-        "Duplicate rows": [
-            ("remove_duplicates", "Remove exact duplicate rows", "Keeps only unique rows"),
-        ],
-        "Category normalization": [
-            ("normalize_categories", "Normalize category labels", "Unifies case, whitespace, and common synonyms"),
-        ],
-        "Negative values": [
-            ("fix_negative_values", "Convert invalid negative values to missing", "Replaces impossible negatives (e.g., age, counts) with null"),
-        ],
-        "Invalid dates": [
-            ("repair_invalid_dates", "Convert invalid dates to missing", "Replaces unparseable date strings with null"),
-        ],
-        "Outliers": [
-            ("cap_numeric_extremes", "Cap numeric extremes", "Clips values beyond the 1st/99th percentile"),
-        ],
-    }
-
-    # Severity styling
     def _severity_badge(severity: str) -> str:
         if severity == "High":
             color = "#9d2b3c"; bg = "#fff1f3"
@@ -4566,11 +4601,11 @@ def render_step_two() -> None:
         else:
             color = "#136B48"; bg = "#EDF9F3"
         return (
-            f'<span style="display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0.55rem;'
-            f'background:{bg};border-radius:999px;font-size:0.72rem;font-weight:700;color:{color};'
+            f'<span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.18rem 0.5rem;'
+            f'background:{bg};border-radius:999px;font-size:0.7rem;font-weight:700;color:{color};'
             f'text-transform:uppercase;letter-spacing:0.05em;">'
             f'<span style="width:5px;height:5px;border-radius:50%;background:{color};"></span>'
-            f'{severity} severity</span>'
+            f'{severity}</span>'
         )
 
     # Group issues by concern
@@ -4578,21 +4613,30 @@ def render_step_two() -> None:
     for issue in hygiene.get("issues", []):
         concern_groups.setdefault(issue["concern"], []).append(issue)
 
-    # Track which option keys have been rendered (to show remaining discretionary ones)
-    rendered_action_keys: set[str] = set()
-    selected_options: dict[str, bool] = {}
+    # Only concerns that map to a real fix action are "fixable"
+    fixable_concerns = [c for c in concern_groups.keys() if c in CONCERN_TO_ACTIONS]
+    total_fixable_issues = sum(len(concern_groups[c]) for c in fixable_concerns)
 
     with st.container(border=True, key="findings_remediation_panel"):
+        header_right = ""
+        if total_fixable_issues > 0 and has_permission("remediate"):
+            # Top-right bulk "Fix all" — will be placed via a column layout after this markdown
+            header_right = f'<span style="font-size:0.82rem;color:#668097;">{total_fixable_issues} fixable issue(s)</span>'
+
         st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Findings &amp; remediation plan</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.4rem;line-height:1.3;">Each finding maps to a recommended cleanup action</div>'
-            '<div style="font-size:0.88rem;color:#668097;margin-bottom:1rem;line-height:1.5;">Toggle actions below to build a remediation plan. Enabled fixes are applied when you submit.</div>',
+            '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.3rem;gap:1rem;flex-wrap:wrap;">'
+            '<div>'
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Issues detected</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;line-height:1.3;">Review each issue and apply the recommended fix</div>'
+            '</div>'
+            f'<div>{header_right}</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
         if not concern_groups:
             st.markdown(
-                '<div style="padding:1.1rem 1.15rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;margin-bottom:0.5rem;">'
+                '<div style="padding:1.1rem 1.15rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;margin-top:0.3rem;">'
                 '<div style="display:flex;align-items:center;gap:0.7rem;">'
                 '<span style="width:32px;height:32px;border-radius:9px;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">&#10003;</span>'
                 '<div>'
@@ -4602,182 +4646,92 @@ def render_step_two() -> None:
                 '</div></div></div>',
                 unsafe_allow_html=True,
             )
+        else:
+            # Fix all button (bulk)
+            if total_fixable_issues > 1 and has_permission("remediate"):
+                fix_all_col, _spacer = st.columns([1, 2.5])
+                if fix_all_col.button(
+                    f"Fix all {total_fixable_issues} issues",
+                    type="primary",
+                    use_container_width=True,
+                    key="fix_all_issues_btn",
+                ):
+                    _apply_concerns_fix(fixable_concerns, "Bulk remediation applied")
 
-        # Render each concern group as a Finding → Action card
-        for concern, issues_list in concern_groups.items():
-            # Determine highest severity in this concern group
-            severities = [i.get("severity", "Low") for i in issues_list]
-            if "High" in severities:
-                top_sev = "High"
-            elif "Medium" in severities:
-                top_sev = "Medium"
-            else:
-                top_sev = "Low"
+            # Per-concern issue cards
+            for concern, issues_list in concern_groups.items():
+                severities = [i.get("severity", "Low") for i in issues_list]
+                if "High" in severities:
+                    top_sev = "High"
+                elif "Medium" in severities:
+                    top_sev = "Medium"
+                else:
+                    top_sev = "Low"
 
-            # Collect affected fields and finding texts
-            affected_fields = sorted({i["column"] for i in issues_list if i.get("column")})
-            finding_texts = [i.get("finding", "") for i in issues_list]
+                affected_fields = sorted({i["column"] for i in issues_list if i.get("column") and i["column"] != "Dataset"})
+                finding_texts = [i.get("finding", "") for i in issues_list]
+                has_fix = concern in CONCERN_TO_ACTIONS
 
-            # Build the finding header HTML (severity badge + concern + affected fields + descriptions)
-            if affected_fields:
-                chip_style = "background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.78rem;color:#17324d;"
-                field_chips = ", ".join(f'<code style="{chip_style}">{f}</code>' for f in affected_fields)
-                fields_html = (
-                    f'<div style="font-size:0.8rem;color:#668097;margin-top:0.35rem;">'
-                    f'<span style="font-weight:600;color:#475569;">Affects:</span> '
-                    f'{field_chips}'
+                chip_style = "background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.76rem;color:#17324d;margin-right:0.2rem;"
+                if affected_fields:
+                    fields_html = (
+                        '<div style="font-size:0.8rem;color:#668097;margin-top:0.3rem;">'
+                        '<span style="font-weight:600;color:#475569;">Affects:</span> '
+                        + " ".join(f'<code style="{chip_style}">{f}</code>' for f in affected_fields)
+                        + '</div>'
+                    )
+                else:
+                    fields_html = ''
+
+                findings_list_html = ''.join(
+                    f'<li style="font-size:0.85rem;color:#475569;line-height:1.5;margin-bottom:0.15rem;">{text}</li>'
+                    for text in finding_texts if text
+                )
+
+                # Render card wrapper + issue details via markdown
+                st.markdown(
+                    f'<div style="padding:0.9rem 1.1rem 0.4rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-top:0.7rem;">'
+                    f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.3rem;flex-wrap:wrap;">'
+                    f'{_severity_badge(top_sev)}'
+                    f'<div style="font-size:1rem;font-weight:600;color:#17324d;">{concern}</div>'
+                    f'<div style="font-size:0.78rem;color:#8A9CAC;">{len(issues_list)} issue(s)</div>'
                     f'</div>'
-                )
-            else:
-                fields_html = ''
-            findings_list_html = ''.join(
-                f'<li style="font-size:0.85rem;color:#475569;line-height:1.5;margin-bottom:0.15rem;">{text}</li>'
-                for text in finding_texts if text
-            )
-
-            st.markdown(
-                f'<div style="padding:1rem 1.15rem 0.3rem 1.15rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-bottom:0.8rem;">'
-                f'<div style="display:flex;align-items:center;gap:0.7rem;margin-bottom:0.35rem;flex-wrap:wrap;">'
-                f'{_severity_badge(top_sev)}'
-                f'<div style="font-size:1rem;font-weight:600;color:#17324d;">{concern}</div>'
-                f'</div>'
-                f'{fields_html}'
-                f'<ul style="margin:0.5rem 0 0.5rem 1.1rem;padding:0;">{findings_list_html}</ul>'
-                f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-top:0.8rem;margin-bottom:0.35rem;">Recommended action{"s" if len(CONCERN_TO_ACTIONS.get(concern, [])) > 1 else ""}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            # Render action checkboxes for this concern
-            actions = CONCERN_TO_ACTIONS.get(concern, [])
-            for action_key, action_label, action_helper in actions:
-                # Put the checkbox inside a marker div so we can position it visually inside the card above
-                val = st.checkbox(
-                    action_label,
-                    value=default_options.get(action_key, False),
-                    disabled=not has_permission("remediate"),
-                    key=f"hygiene_opt_{action_key}",
-                    help=action_helper,
-                )
-                selected_options[action_key] = val
-                rendered_action_keys.add(action_key)
-                st.markdown(
-                    f'<div style="font-size:0.78rem;color:#668097;margin-top:-0.4rem;margin-bottom:0.8rem;margin-left:1.8rem;line-height:1.45;">{action_helper}</div>',
+                    f'{fields_html}'
+                    f'<ul style="margin:0.4rem 0 0.5rem 1.1rem;padding:0;">{findings_list_html}</ul>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
-        # ─ Discretionary / additional options not tied to findings ─
-        all_action_keys = {key for actions in CONCERN_TO_ACTIONS.values() for (key, _, _) in actions} | {"group_rare_categories"}
-        extra_keys = all_action_keys - rendered_action_keys
-
-        if extra_keys:
-            st.markdown(
-                '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:1rem;margin-bottom:0.45rem;">Optional additional cleanup</div>'
-                '<div style="font-size:0.82rem;color:#668097;margin-bottom:0.6rem;line-height:1.5;">Not triggered by scan findings. Enable only if needed for downstream modeling.</div>',
-                unsafe_allow_html=True,
-            )
-            extra_labels = {
-                "standardize_blank_strings": ("Standardize blank strings as missing", "Converts empty strings to null values"),
-                "fill_operational_gaps": ("Fill common missing operational values", "Imputes missing values using median / mode"),
-                "remove_duplicates": ("Remove exact duplicate rows", "Keeps only unique rows"),
-                "normalize_categories": ("Normalize category labels", "Unifies case, whitespace, synonyms"),
-                "fix_negative_values": ("Convert invalid negative values to missing", "Replaces impossible negatives with null"),
-                "repair_invalid_dates": ("Convert invalid dates to missing", "Replaces unparseable dates with null"),
-                "cap_numeric_extremes": ("Cap numeric extremes", "Clips values beyond the 1st/99th percentile"),
-                "group_rare_categories": ("Group rare category labels into Other", "Consolidates low-frequency categories"),
-            }
-            for key in extra_keys:
-                lbl, helper = extra_labels.get(key, (key, ""))
-                val = st.checkbox(
-                    lbl,
-                    value=default_options.get(key, False),
-                    disabled=not has_permission("remediate"),
-                    key=f"hygiene_opt_{key}",
-                    help=helper,
-                )
-                selected_options[key] = val
-                st.markdown(
-                    f'<div style="font-size:0.78rem;color:#668097;margin-top:-0.4rem;margin-bottom:0.6rem;margin-left:1.8rem;line-height:1.45;">{helper}</div>',
-                    unsafe_allow_html=True,
-                )
+                # Fix button — placed right after the card via button column
+                if has_fix and has_permission("remediate"):
+                    action_labels = [lbl for (_, lbl) in CONCERN_TO_ACTIONS.get(concern, [])]
+                    fix_help = "Applies: " + "; ".join(action_labels)
+                    btn_col, _blank = st.columns([1, 2.5])
+                    if btn_col.button(
+                        f"Fix {concern.lower()}",
+                        key=f"fix_{concern.replace(' ', '_')}_btn",
+                        help=fix_help,
+                        use_container_width=True,
+                    ):
+                        _apply_concerns_fix([concern], f"Fix applied: {concern}")
+                elif has_fix and not has_permission("remediate"):
+                    st.caption("_Data Analyst role required to apply this fix._")
 
     # ─────────────────────────────────────────────────────────────
-    # D. REMEDIATION PREVIEW + APPLY (primary card)
+    # D. APPLIED FIXES (shown only if any were applied)
     # ─────────────────────────────────────────────────────────────
-    # Ensure all option keys are in selected_options
-    for key in [k for ks in CONCERN_TO_ACTIONS.values() for (k, _, _) in ks] + ["group_rare_categories"]:
-        selected_options.setdefault(key, default_options.get(key, False))
-
-    options = selected_options
-    preview_df, preview_actions = apply_hygiene_fixes(st.session_state.source_df, options)
-    preview_summary = summarize_dataframe_change(st.session_state.source_df, preview_df)
-
-    any_action_selected = any(options.values())
-
-    with st.container(border=True, key="remediation_preview_panel"):
-        st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Remediation preview</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">Impact of your selected fixes</div>',
-            unsafe_allow_html=True,
-        )
-
-        if not any_action_selected:
+    if st.session_state.last_cleaning_actions:
+        with st.container(border=True, key="last_remediation_panel"):
+            count = len(st.session_state.last_cleaning_actions)
             st.markdown(
-                '<div style="font-size:0.88rem;color:#668097;padding:0.7rem 0;line-height:1.55;">No fixes selected yet. Toggle a recommended action above to see the impact preview.</div>',
+                f'<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Fixes applied</div>'
+                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{count} cleanup action(s) applied to the source dataset</div>',
                 unsafe_allow_html=True,
             )
-        else:
-            cells_changed = preview_summary["changed_cells"]
-            cols_changed = preview_summary["changed_columns"]
-            rows_before = preview_summary["rows_before"]
-            rows_after = preview_summary["rows_after"]
-            missing_delta = f"{preview_summary['missing_before']} \u2192 {preview_summary['missing_after']}"
-
-            st.markdown(
-                '<div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
-                + _stat_capsule("Rows", f"{rows_before} \u2192 {rows_after}", "Before vs. after")
-                + _stat_capsule("Cells changed", str(cells_changed), f"{cols_changed} column(s)")
-                + _stat_capsule("Missing cells", missing_delta, "Before vs. after")
-                + '</div>',
-                unsafe_allow_html=True,
-            )
-            if preview_actions:
-                st.dataframe(pd.DataFrame(preview_actions), use_container_width=True, hide_index=True)
-
-        st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
-
-        apply_cols = st.columns([1, 1], gap="small")
-        if has_permission("remediate"):
-            if apply_cols[0].button(
-                "Apply selected fixes",
-                type="primary",
-                use_container_width=True,
-                disabled=not any_action_selected,
-            ):
-                cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, options)
-                set_source_dataframe(cleaned_df, f"{st.session_state.source_label} * remediated")
-                st.session_state.last_cleaning_actions = actions
-                st.session_state.intake_confirmed = True
-                st.session_state.hygiene_reviewed = True
-                record_audit_event("Hygiene fixes applied", "; ".join(item["effect"] for item in actions), status="Completed")
-                st.session_state.current_step = 2
-                st.rerun()
-        else:
-            apply_cols[0].empty()
-            render_role_restriction("This role cannot modify the source dataset. Review the scan results and wait for Data Analyst action.")
-
-        if apply_cols[1].button(
-            "Mark scan review complete",
-            use_container_width=True,
-            disabled=st.session_state.hygiene_reviewed,
-        ):
-            st.session_state.hygiene_reviewed = True
-            record_audit_event("Scan review completed", "Source quality and risk findings were acknowledged.", status="Completed")
-            st.session_state.current_step = 2
-            st.rerun()
+            st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────
-    # E. SUPPORTING CONTEXT (tabs — optional deeper view)
+    # E. SUPPORTING CONTEXT (tabs)
     # ─────────────────────────────────────────────────────────────
     with st.container(border=True, key="scan_context_panel"):
         st.markdown(
@@ -4811,16 +4765,27 @@ def render_step_two() -> None:
             st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────
-    # F. LAST REMEDIATION APPLIED (only shown post-apply)
+    # F. BOTTOM NAV — Mark complete + Back to Step 1
     # ─────────────────────────────────────────────────────────────
-    if st.session_state.last_cleaning_actions:
-        with st.container(border=True, key="last_remediation_panel"):
-            st.markdown(
-                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Remediation applied</div>'
-                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">Latest cleanup actions</div>',
-                unsafe_allow_html=True,
-            )
-            st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
+    st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
+    nav_cols = st.columns([1, 1], gap="small")
+    if nav_cols[0].button(
+        "Mark scan review complete",
+        type="primary",
+        use_container_width=True,
+        disabled=st.session_state.hygiene_reviewed,
+    ):
+        st.session_state.hygiene_reviewed = True
+        record_audit_event("Scan review completed", "Source quality and risk findings were acknowledged.", status="Completed")
+        st.session_state.current_step = 2
+        st.rerun()
+    if nav_cols[1].button(
+        f"← Back to {STEP_CONFIG[0]['title']}",
+        use_container_width=True,
+        key="step2_back_to_step1",
+    ):
+        st.session_state.current_step = 0
+        st.rerun()
 
 
 def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:

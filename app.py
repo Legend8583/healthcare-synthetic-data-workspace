@@ -3675,19 +3675,6 @@ def render_login_screen() -> None:
                 color: #0F172A !important;
                 background: transparent !important;
             }
-            /* Placeholder — muted grey so it reads as hint text, not filled value */
-            .login-right-panel [data-baseweb="input"] input::placeholder,
-            .login-right-panel [data-baseweb="base-input"] input::placeholder,
-            .login-right-panel .stTextInput input::placeholder,
-            .login-right-panel input::placeholder,
-            .login-right-panel [data-baseweb="input"] input::-webkit-input-placeholder,
-            .login-right-panel [data-baseweb="input"] input::-moz-placeholder,
-            .login-right-panel [data-baseweb="input"] input:-ms-input-placeholder {
-                color: #94A3B8 !important;
-                opacity: 1 !important;
-                font-weight: 400 !important;
-                -webkit-text-fill-color: #94A3B8 !important;
-            }
             .login-right-panel .stTextInput label p,
             .login-right-panel .stTextInput label {
                 font-size: 0.87rem !important;
@@ -3735,21 +3722,30 @@ def render_login_screen() -> None:
 
     left_col, right_col = st.columns([1, 1], gap="medium")
 
-    # Inject highest-specificity placeholder style — placed after all other styles to win cascade
+    # Global placeholder styling for login form inputs — targets stTextInput directly
+    # because Streamlit widgets are NOT children of custom markdown wrappers in the DOM.
     st.markdown(
         """
         <style>
-            html body .login-right-panel .stTextInput input::placeholder,
-            html body .login-right-panel input::placeholder {
+            .stTextInput input {
+                color: #0F172A !important;
+            }
+            .stTextInput input::placeholder {
                 color: #94A3B8 !important;
+                opacity: 1 !important;
                 -webkit-text-fill-color: #94A3B8 !important;
+            }
+            .stTextInput input::-webkit-input-placeholder {
+                color: #94A3B8 !important;
+                opacity: 1 !important;
+                -webkit-text-fill-color: #94A3B8 !important;
+            }
+            .stTextInput input::-moz-placeholder {
+                color: #94A3B8 !important;
                 opacity: 1 !important;
             }
-            html body .login-right-panel .stTextInput input::-webkit-input-placeholder,
-            html body .login-right-panel input::-webkit-input-placeholder {
+            .stTextInput input:-ms-input-placeholder {
                 color: #94A3B8 !important;
-                -webkit-text-fill-color: #94A3B8 !important;
-                opacity: 1 !important;
             }
         </style>
         """,

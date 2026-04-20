@@ -3700,13 +3700,13 @@ def render_login_screen() -> None:
                 font-size: 0.8rem;
                 color: #94A3B8;
                 line-height: 1.55;
-                text-align: center;
+                text-align: left;
             }
             .login-footer a {
                 color: #0B5EA8;
                 text-decoration: none;
                 font-weight: 500;
-                margin: 0 0.6rem;
+                margin-right: 1.2rem;
             }
             .login-footer code {
                 background: #F1F5F9;
@@ -3839,21 +3839,31 @@ def render_login_screen() -> None:
         st.markdown(
             """
             <div class="login-footer">
-                <div style="margin-bottom:0.8rem;">
+                <div style="text-align:left;margin-bottom:0;">
                     <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
                     <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access">Request access</a>
-                </div>
-                <div style="margin-bottom:0.5rem;">
-                    Demo credential for all access profiles: <code>test</code>
-                </div>
-                <div style="font-size:0.74rem;color:#B0BAC4;">
-                    Authorized users only. Activity is logged for compliance.
                 </div>
             </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+    # Full-width bottom footer — centered demo credential + security notice
+    st.markdown(
+        """
+        <div style="margin-top:2rem;padding:1.5rem 1rem 1rem 1rem;border-top:1px solid #E2E8F0;text-align:center;">
+            <div style="font-size:0.82rem;color:#64748B;margin-bottom:0.4rem;">
+                Demo credential for all access profiles:
+                <code style="background:#F1F5F9;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.78rem;color:#475569;margin-left:0.3rem;">test</code>
+            </div>
+            <div style="font-size:0.76rem;color:#94A3B8;">
+                Authorized users only. Activity is logged for compliance.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_sidebar(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:

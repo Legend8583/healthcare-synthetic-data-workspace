@@ -4285,7 +4285,16 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
                     st.rerun()
 
     # ─────────────────────────────────────────────────────────────
-    # D. INTAKE SUMMARY (only after upload)
+    # D. AGENT DECISION LOG (step-0 variant — positioned after the primary task area)
+    # ─────────────────────────────────────────────────────────────
+    st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
+    render_upload_status_panel(
+        intake_confirmed=st.session_state.get("intake_confirmed", False),
+        profile=st.session_state.get("profile"),
+    )
+
+    # ─────────────────────────────────────────────────────────────
+    # E. INTAKE SUMMARY (only after upload)
     # ─────────────────────────────────────────────────────────────
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
@@ -5424,11 +5433,9 @@ def main() -> None:
     current_step = st.session_state.current_step
 
     if current_step == 0:
-        # Step 0: clean upload status only — no blockers/warnings/remediation
-        render_upload_status_panel(
-            intake_confirmed=st.session_state.get("intake_confirmed", False),
-            profile=st.session_state.get("profile"),
-        )
+        # Step 0: Agent Decision Log is rendered INSIDE render_step_one at the proper position
+        # (between the upload+readiness area and the intake summary)
+        pass
     else:
         # Steps 1+: full consolidated decision log with readiness engine
         readiness = compute_agent_readiness(

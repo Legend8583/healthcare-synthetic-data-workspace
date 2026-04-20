@@ -4063,25 +4063,26 @@ def render_role_restriction(message: str) -> None:
 def render_step_one(metadata: list[dict[str, Any]]) -> None:
     render_section_header(0, "Register the source dataset into the governed workflow.")
 
+    # ── PRIMARY ACTION: Upload (moved to top for visibility) ──
     with st.container(border=True):
-        st.markdown("**Request Details**")
-        if has_permission("upload"):
-            st.text_input(
-                "Project purpose",
-                key="project_purpose",
-                placeholder="Example: ED operational workflow modeling",
-            )
-        else:
-            render_role_restriction("This role can view the request summary but cannot edit request details.")
-
-    with st.container(border=True):
-        st.markdown("**Upload source dataset**")
-        st.markdown("<div class='upload-callout'>Add the source CSV for this request. File details and preview will appear here after upload.</div>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                <div style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(11,94,168,0.1);color:#0B5EA8;font-weight:700;font-size:0.85rem;">1</div>
+                <div style="font-size:1.05rem;font-weight:600;color:#0F172A;">Upload source dataset</div>
+            </div>
+            <div style="font-size:0.86rem;color:#668097;line-height:1.5;margin-bottom:0.85rem;">
+                Add the source CSV for this request. File details and preview will appear here after upload.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         if has_permission("upload"):
             uploaded_file = st.file_uploader(
                 "Upload CSV file",
                 type=["csv"],
                 help="Upload the source dataset for this request.",
+                label_visibility="collapsed",
             )
             if uploaded_file is not None:
                 current_signature = (uploaded_file.name, uploaded_file.size)
@@ -4094,6 +4095,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         else:
             render_role_restriction("This role cannot upload or replace the source dataset.")
 
+        # Loaded file card (visually unified with workspace style)
         st.markdown(
             f"""
             <div class="request-file-card">
@@ -4119,25 +4121,82 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             unsafe_allow_html=True,
         )
 
+    # ── Request details (moved below upload) ──
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">
+                <div style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(11,94,168,0.1);color:#0B5EA8;font-weight:700;font-size:0.85rem;">2</div>
+                <div style="font-size:1.05rem;font-weight:600;color:#0F172A;">Request details</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if has_permission("upload"):
+            st.text_input(
+                "Project purpose",
+                key="project_purpose",
+                placeholder="Example: ED operational workflow modeling",
+            )
+        else:
+            render_role_restriction("This role can view the request summary but cannot edit request details.")
+
     readiness_cols = st.columns([0.9, 1.1], gap="large")
     with readiness_cols[0]:
-        with st.container(border=True):
-            st.markdown("**Ready for Submission**")
-            metric_cols = st.columns(2)
-            metric_cols[0].metric("Rows loaded", st.session_state.profile["summary"]["rows"] if has_active_dataset() else 0)
-            metric_cols[1].metric("Columns detected", st.session_state.profile["summary"]["columns"] if has_active_dataset() else 0)
-            sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata)) if has_active_dataset() else 0
-            metric_cols[0].metric("Sensitive fields flagged", sensitive_count)
-            metric_cols[1].metric("Request status", request_status_from_snapshot(capture_workflow_snapshot()))
-            if has_active_dataset():
-                helper_text = (
-                    f"{sensitive_count} fields require sensitivity review before continuing."
-                    if sensitive_count
-                    else "No sensitive fields are currently flagged for review."
-                )
-            else:
-                helper_text = "Upload a dataset to generate sensitivity review findings."
-            st.markdown(f"<div class='muted-note'>{helper_text}</div>", unsafe_allow_html=True)
+        # Styled intake summary — capsule cards matching the rest of the governed UI
+        rows_val = f"{st.session_state.profile['summary']['rows']:,}" if has_active_dataset() else "—"
+        cols_val = str(st.session_state.profile["summary"]["columns"]) if has_active_dataset() else "—"
+        sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata)) if has_active_dataset() else 0
+        status_val = request_status_from_snapshot(capture_workflow_snapshot())
+
+        if has_active_dataset():
+            helper_text = (
+                f"{sensitive_count} field(s) require sensitivity review before continuing."
+                if sensitive_count
+                else "No sensitive fields flagged for review."
+            )
+        else:
+            helper_text = "Upload a dataset to generate sensitivity review findings."
+
+        # Accent colors for sensitive card
+        if sensitive_count == 0 and has_active_dataset():
+            sens_accent = "#136B48"; sens_bg = "#EDF9F3"
+        elif sensitive_count > 0:
+            sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
+        else:
+            sens_accent = "#668097"; sens_bg = "rgba(214,226,236,0.3)"
+
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#08467D", bg: str = "#EBF1F7") -> str:
+            return (
+                f'<div style="flex:1;min-width:0;padding:0.75rem 0.95rem;background:{bg};'
+                f'border:1px solid {accent}22;border-radius:10px;">'
+                f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{accent};margin-bottom:0.2rem;">{kicker}</div>'
+                f'<div style="font-size:1.25rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
+                f'<div style="font-size:0.74rem;color:#668097;margin-top:0.15rem;line-height:1.35;">{detail}</div>'
+                f'</div>'
+            )
+
+        intake_html = (
+            '<div class="action-shell" style="margin-bottom:0;">'
+            '<h4>Intake summary</h4>'
+            '<div style="display:flex;gap:0.55rem;flex-wrap:wrap;margin-bottom:0.5rem;">'
+            + _stat_capsule("Rows loaded", rows_val, "From uploaded CSV")
+            + _stat_capsule("Columns", cols_val, "Fields detected")
+            + '</div>'
+            '<div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'
+            + _stat_capsule(
+                "Sensitive fields",
+                str(sensitive_count) if has_active_dataset() else "—",
+                "Flagged for review",
+                accent=sens_accent,
+                bg=sens_bg,
+            )
+            + _stat_capsule("Request status", status_val, "Current workflow state")
+            + '</div>'
+            f'<div style="font-size:0.8rem;color:#668097;margin-top:0.7rem;line-height:1.5;">{helper_text}</div>'
+            '</div>'
+        )
+        st.markdown(intake_html, unsafe_allow_html=True)
 
     with readiness_cols[1]:
         with st.container(border=True):

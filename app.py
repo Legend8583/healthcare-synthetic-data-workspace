@@ -531,11 +531,10 @@ def inject_styles() -> None:
                 --brand: #0b5ea8;
                 --brand-deep: #08467d;
                 --accent: #19cbc5;
-                --bg: #F3F7FB;
+                --bg: #f4f8fb;
                 --surface: #ffffff;
-                --surface-soft: #F8FAFC;
-                --line: #D9E3EF;
-                --line-soft: #E5EDF5;
+                --surface-soft: #f8fbfd;
+                --line: #d6e2ec;
                 --text: #17324d;
                 --muted: #668097;
                 --warn: #9c6a17;
@@ -544,8 +543,7 @@ def inject_styles() -> None:
                 --danger-bg: #fff1f3;
                 --good: #136b48;
                 --good-bg: #edf9f3;
-                --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-                --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.03);
+                --shadow: 0 10px 24px rgba(8, 70, 125, 0.08);
             }
 
             html {
@@ -559,7 +557,10 @@ def inject_styles() -> None:
             }
 
             [data-testid="stAppViewContainer"] {
-                background: var(--bg);
+                background:
+                    radial-gradient(circle at top left, rgba(11, 94, 168, 0.07), transparent 22%),
+                    radial-gradient(circle at top right, rgba(25, 203, 197, 0.08), transparent 16%),
+                    linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
             }
 
             [data-testid="stHeader"],
@@ -1284,6 +1285,56 @@ def inject_styles() -> None:
                 line-height: 1.6;
             }
 
+            .st-key-request_details_panel,
+            .st-key-upload_task_panel,
+            .st-key-submission_readiness_panel,
+            .st-key-intake_summary_panel,
+            .st-key-hygiene_summary_panel,
+            .st-key-scan_findings_panel,
+            .st-key-cleanup_actions_panel,
+            .st-key-last_remediation_panel {
+                background: var(--surface) !important;
+                border: 1px solid var(--line) !important;
+                border-radius: 20px !important;
+                box-shadow: var(--shadow) !important;
+                padding: 1rem 1.15rem !important;
+            }
+
+            .st-key-request_details_panel {
+                padding-bottom: 1.35rem !important;
+            }
+
+            .st-key-upload_task_panel {
+                padding-bottom: 0.9rem !important;
+            }
+
+            .st-key-intake_summary_panel {
+                padding-bottom: 1.45rem !important;
+            }
+
+            .st-key-hygiene_summary_panel {
+                padding-bottom: 1.4rem !important;
+            }
+
+            .st-key-cleanup_actions_panel {
+                padding-bottom: 1.1rem !important;
+            }
+
+            .st-key-request_details_panel > div,
+            .st-key-upload_task_panel > div,
+            .st-key-submission_readiness_panel > div,
+            .st-key-intake_summary_panel > div,
+            .st-key-hygiene_summary_panel > div,
+            .st-key-scan_findings_panel > div,
+            .st-key-cleanup_actions_panel > div,
+            .st-key-last_remediation_panel > div {
+                background: transparent !important;
+            }
+
+            .st-key-request_details_panel [data-testid="stTextInput"] {
+                margin-bottom: 0.45rem !important;
+            }
+
             .pill {
                 display: inline-block;
                 border-radius: 999px;
@@ -1571,10 +1622,9 @@ def inject_styles() -> None:
             }
 
             div[data-testid="stTextInput"] input {
-                min-height: 3rem !important;
-                border-radius: 14px !important;
-                border: 1px solid var(--line) !important;
-                background: #fbfdff !important;
+                background: transparent !important;
+                border: 0 !important;
+                box-shadow: none !important;
             }
 
             div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
@@ -1614,25 +1664,68 @@ def inject_styles() -> None:
             }
 
             div[data-baseweb="select"] > div,
-            div[data-testid="stNumberInput"] input,
-            div[data-testid="stTextInput"] input,
             div[data-testid="stTextArea"] textarea {
                 border-radius: 14px;
-                background: var(--surface-soft) !important;
+                background: var(--surface) !important;
                 color: var(--text) !important;
                 -webkit-text-fill-color: var(--text) !important;
-                border: 1px solid var(--line-soft) !important;
+                border: 1px solid var(--line) !important;
+            }
+
+            /* Universal text field fix:
+               BaseWeb clips borders when height/border are applied to the inner input.
+               Put the frame on the wrapper and let the input stay borderless. */
+            div[data-testid="stTextInput"] [data-baseweb="input"],
+            div[data-testid="stNumberInput"] [data-baseweb="input"] {
+                min-height: 3.15rem !important;
+                border-radius: 14px !important;
+                border: 0 !important;
+                background: var(--surface) !important;
+                box-shadow: inset 0 0 0 1px var(--line) !important;
+                box-sizing: border-box !important;
+                overflow: hidden !important;
+                background-clip: padding-box !important;
+            }
+
+            div[data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+            div[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within {
+                box-shadow:
+                    inset 0 0 0 1px rgba(11, 94, 168, 0.62),
+                    0 0 0 2px rgba(11, 94, 168, 0.1) !important;
+            }
+
+            div[data-testid="stTextInput"] [data-baseweb="input"] > div,
+            div[data-testid="stNumberInput"] [data-baseweb="input"] > div {
+                background: transparent !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                min-height: calc(3.15rem - 2px) !important;
+                display: flex !important;
+                align-items: center !important;
+            }
+
+            div[data-testid="stTextInput"] input,
+            div[data-testid="stNumberInput"] input {
+                min-height: auto !important;
+                height: auto !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                padding: 0 0.9rem !important;
+                line-height: 1.35 !important;
+                box-sizing: border-box !important;
             }
 
             div[data-testid="stFileUploader"] section {
-                background: var(--surface-soft) !important;
-                border: 1px solid var(--line-soft) !important;
+                background: var(--surface) !important;
+                border: 1px solid var(--line) !important;
                 border-radius: 18px !important;
             }
 
             div[data-testid="stDataFrame"],
             div[data-testid="stTable"] {
-                background: var(--surface-soft) !important;
+                background: var(--surface) !important;
                 border-radius: 18px;
             }
 
@@ -4087,21 +4180,21 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"
 
     # ─────────────────────────────────────────────────────────────
-    # A. STATUS STRIP — primary container (white, clear border, subtle shadow)
+    # A. STATUS STRIP — matches section-shell styling (white bg, --line border, --text color, --brand kickers)
     # ─────────────────────────────────────────────────────────────
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #D9E3EF;border-radius:20px;box-shadow:0 1px 2px rgba(15,23,42,0.04);margin-bottom:1rem;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #d6e2ec;border-radius:20px;box-shadow:0 10px 24px rgba(8,70,125,0.08);margin-bottom:1rem;flex-wrap:wrap;">
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Request</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;font-family:ui-monospace,monospace;">{active_request}</span>
             </div>
-            <div style="width:1px;height:18px;background:#D9E3EF;"></div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Role</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{st.session_state.current_role}</span>
             </div>
-            <div style="width:1px;height:18px;background:#D9E3EF;"></div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;">1 of {len(STEP_CONFIG)}</span>
@@ -4118,7 +4211,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     # ─────────────────────────────────────────────────────────────
     # B. REQUEST DETAILS
     # ─────────────────────────────────────────────────────────────
-    with st.container(border=True):
+    with st.container(border=True, key="request_details_panel"):
         st.markdown(
             """
             <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Request details</div>
@@ -4144,7 +4237,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
     # ─── LEFT: Upload zone ───
     with task_cols[0]:
-        with st.container(border=True):
+        with st.container(border=True, key="upload_task_panel"):
             if not has_data:
                 st.markdown(
                     """
@@ -4202,7 +4295,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
                 st.markdown(
                     """
-                    <div style="display:flex;gap:1rem;margin-top:0.6rem;font-size:0.78rem;color:#668097;flex-wrap:wrap;">
+                    <div style="display:flex;gap:1rem;margin-top:0.25rem;margin-bottom:0;font-size:0.78rem;color:#668097;flex-wrap:wrap;">
                         <span>&#128196; CSV format only</span>
                         <span>&#9881;&#65039; Headers in first row</span>
                         <span>&#128274; Source never leaves governance boundary</span>
@@ -4215,7 +4308,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
     # ─── RIGHT: Submission readiness ───
     with task_cols[1]:
-        with st.container(border=True):
+        with st.container(border=True, key="submission_readiness_panel"):
             checklist = build_submission_checklist()
             total = len(checklist)
             completed_count = sum(1 for _, done in checklist if done)
@@ -4233,7 +4326,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
             for label, done in checklist:
                 if done:
                     icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;">&#10003;</span>'
-                    label_style = "color:#668097;text-decoration:line-through;text-decoration-color:#B8C5D2;"
+                    label_style = "color:#17324d;font-weight:500;"
                 else:
                     icon_html = '<span style="flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#FFFFFF;border:1.5px solid #d6e2ec;display:inline-block;"></span>'
                     label_style = "color:#17324d;font-weight:500;"
@@ -4294,24 +4387,22 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     # ─────────────────────────────────────────────────────────────
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
-        # Tinted background ONLY for meaningful warning state (sensitive fields > 0)
-        # Zero sensitive = subtle off-white (default secondary surface, no state to communicate)
-        if sensitive_count > 0:
-            sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
+        if sensitive_count == 0:
+            sens_accent = "#136B48"; sens_bg = "#EDF9F3"
         else:
-            sens_accent = "#0b5ea8"; sens_bg = "#F8FAFC"
+            sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
 
-        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#F8FAFC") -> str:
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
             return (
                 f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
-                f'border:1px solid #E5EDF5;border-radius:12px;">'
+                f'border:1px solid #d6e2ec;border-radius:12px;margin-bottom:0.25rem;">'
                 f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
                 f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
                 f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
                 f'</div>'
             )
 
-        with st.container(border=True):
+        with st.container(border=True, key="intake_summary_panel"):
             rows_val = f"{st.session_state.profile['summary']['rows']:,}"
             cols_val = str(st.session_state.profile['summary']['columns'])
             intake_html = (
@@ -4345,19 +4436,95 @@ def render_step_two() -> None:
         st.info("Upload and submit a source dataset before running the scan.")
         return
 
+    # ─────────────────────────────────────────────────────────────
+    # A. STATUS STRIP (matches page 1)
+    # ─────────────────────────────────────────────────────────────
+    snapshot = capture_workflow_snapshot()
+    status_value = request_status_from_snapshot(snapshot)
+    active_request = st.session_state.active_request_id or "Not yet created"
+    is_reviewed = st.session_state.get("hygiene_reviewed", False)
+
+    if is_reviewed:
+        status_chip_color = "#136B48"; status_chip_bg = "#EDF9F3"; status_label = "Scan reviewed"
+    else:
+        status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"; status_label = "Scan in review"
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #d6e2ec;border-radius:20px;box-shadow:0 10px 24px rgba(8,70,125,0.08);margin-bottom:1rem;flex-wrap:wrap;">
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Request</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;font-family:ui-monospace,monospace;">{active_request}</span>
+            </div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Role</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{st.session_state.current_role}</span>
+            </div>
+            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="display:flex;align-items:baseline;gap:0.45rem;">
+                <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">2 of {len(STEP_CONFIG)}</span>
+            </div>
+            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.28rem 0.7rem;background:{status_chip_bg};border-radius:999px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:{status_chip_color};"></span>
+                <span style="font-size:0.8rem;color:{status_chip_color};font-weight:700;">{status_label}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     hygiene = st.session_state.hygiene
     missingness_frame = build_missingness_strategy_frame(st.session_state.profile)
     missingness_chart = missingness_frame[missingness_frame["Field"] != "No incomplete field"][["Field", "Missing %"]]
     default_options = build_hygiene_option_defaults(hygiene)
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Quality score", hygiene["quality_score"])
-    metric_cols[1].metric("High severity", hygiene["severity_counts"]["High"])
-    metric_cols[2].metric("Medium severity", hygiene["severity_counts"]["Medium"])
-    metric_cols[3].metric("Duplicate rows", st.session_state.profile["summary"]["duplicate_rows"])
 
-    # Hygiene findings now render inline inside the Agent Decision Log (above).
-    # Standalone classified hygiene card removed to avoid duplication.
+    # ─────────────────────────────────────────────────────────────
+    # B. HYGIENE ASSESSMENT — capsule cards (matches page 1 intake summary)
+    # ─────────────────────────────────────────────────────────────
+    def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
+        return (
+            f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
+            f'border:1px solid #d6e2ec;border-radius:12px;margin-bottom:0.25rem;">'
+            f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
+            f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
+            f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
+            f'</div>'
+        )
 
+    quality_score = hygiene["quality_score"]
+    high_sev = hygiene["severity_counts"]["High"]
+    med_sev = hygiene["severity_counts"]["Medium"]
+    dup_rows = st.session_state.profile["summary"]["duplicate_rows"]
+
+    # Accent colors by severity state
+    if high_sev > 0:
+        high_accent = "#9d2b3c"; high_bg = "#fff1f3"
+    else:
+        high_accent = "#0b5ea8"; high_bg = "#f5f9fc"
+
+    if med_sev > 0:
+        med_accent = "#9C6A17"; med_bg = "#FFF6E3"
+    else:
+        med_accent = "#0b5ea8"; med_bg = "#f5f9fc"
+
+    with st.container(border=True, key="hygiene_summary_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Hygiene assessment</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Source quality overview</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule("Quality score", f"{quality_score}", "Agent-assessed dataset quality")
+            + _stat_capsule("High severity", str(high_sev), "Critical fixes required" if high_sev > 0 else "None flagged", accent=high_accent, bg=high_bg)
+            + _stat_capsule("Medium severity", str(med_sev), "Cleanup recommended" if med_sev > 0 else "None flagged", accent=med_accent, bg=med_bg)
+            + _stat_capsule("Duplicate rows", str(dup_rows), "Exact duplicates detected" if dup_rows > 0 else "No duplicates")
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ─────────────────────────────────────────────────────────────
+    # C. TWO-COLUMN — findings tabs | cleanup actions
+    # ─────────────────────────────────────────────────────────────
     issues_frame = pd.DataFrame(
         [
             {
@@ -4372,127 +4539,160 @@ def render_step_two() -> None:
     )
 
     review_col, action_col = st.columns([1.25, 0.95], gap="large")
+
     with review_col:
-        scan_tabs = st.tabs(["Findings", "Source preview", "Missingness strategy", "Field profile"])
-        with scan_tabs[0]:
-            if issues_frame.empty:
-                st.success("No hygiene issues were detected in the current dataset.")
-            else:
-                st.dataframe(issues_frame, use_container_width=True, hide_index=True)
-        with scan_tabs[1]:
-            preview_cols = st.columns(2)
-            preview_cols[0].metric("Rows in source data", len(st.session_state.source_df))
-            preview_cols[1].metric("Columns in source data", len(st.session_state.source_df.columns))
-            st.dataframe(st.session_state.source_df.head(15), use_container_width=True, hide_index=True)
-        with scan_tabs[2]:
-            if not missingness_chart.empty:
-                chart_frame = missingness_chart.set_index("Field")
-                st.bar_chart(chart_frame, use_container_width=True)
-            st.dataframe(missingness_frame, use_container_width=True, hide_index=True)
-        with scan_tabs[3]:
-            profile_rows = []
-            for column, details in st.session_state.profile["columns"].items():
-                profile_rows.append(
-                    {
-                        "Field": column,
-                        "Role": details["semantic_role"],
-                        "Missing %": details["missing_pct"],
-                        "Unique values": details["unique_count"],
-                        "Example values": ", ".join(details.get("examples", [])),
-                    }
-                )
-            st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
+        with st.container(border=True, key="scan_findings_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Scan findings</div>'
+                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">Review agent outputs</div>',
+                unsafe_allow_html=True,
+            )
+            scan_tabs = st.tabs(["Findings", "Source preview", "Missingness strategy", "Field profile"])
+            with scan_tabs[0]:
+                if issues_frame.empty:
+                    st.success("No hygiene issues were detected in the current dataset.")
+                else:
+                    st.dataframe(issues_frame, use_container_width=True, hide_index=True)
+            with scan_tabs[1]:
+                preview_cols = st.columns(2)
+                preview_cols[0].metric("Rows in source data", len(st.session_state.source_df))
+                preview_cols[1].metric("Columns in source data", len(st.session_state.source_df.columns))
+                st.dataframe(st.session_state.source_df.head(15), use_container_width=True, hide_index=True)
+            with scan_tabs[2]:
+                if not missingness_chart.empty:
+                    chart_frame = missingness_chart.set_index("Field")
+                    st.bar_chart(chart_frame, use_container_width=True)
+                st.dataframe(missingness_frame, use_container_width=True, hide_index=True)
+            with scan_tabs[3]:
+                profile_rows = []
+                for column, details in st.session_state.profile["columns"].items():
+                    profile_rows.append(
+                        {
+                            "Field": column,
+                            "Role": details["semantic_role"],
+                            "Missing %": details["missing_pct"],
+                            "Unique values": details["unique_count"],
+                            "Example values": ", ".join(details.get("examples", [])),
+                        }
+                    )
+                st.dataframe(pd.DataFrame(profile_rows), use_container_width=True, hide_index=True)
 
     with action_col:
-        st.markdown("**Recommended cleanup actions**")
-        standardize_blank_strings = st.checkbox(
-            "Standardize blank strings as missing",
-            value=default_options["standardize_blank_strings"],
-            disabled=not has_permission("remediate"),
-        )
-        remove_duplicates = st.checkbox(
-            "Remove exact duplicate rows",
-            value=default_options["remove_duplicates"],
-            disabled=not has_permission("remediate"),
-        )
-        normalize_categories = st.checkbox(
-            "Normalize category labels",
-            value=default_options["normalize_categories"],
-            disabled=not has_permission("remediate"),
-        )
-        fill_operational_gaps = st.checkbox(
-            "Fill common missing operational values",
-            value=default_options["fill_operational_gaps"],
-            disabled=not has_permission("remediate"),
-        )
-        fix_negative_values = st.checkbox(
-            "Convert invalid negative values to missing",
-            value=default_options["fix_negative_values"],
-            disabled=not has_permission("remediate"),
-        )
-        repair_invalid_dates = st.checkbox(
-            "Convert invalid dates to missing",
-            value=default_options["repair_invalid_dates"],
-            disabled=not has_permission("remediate"),
-        )
-        cap_numeric_extremes = st.checkbox(
-            "Cap numeric extremes",
-            value=default_options["cap_numeric_extremes"],
-            disabled=not has_permission("remediate"),
-        )
-        group_rare_categories = st.checkbox(
-            "Group rare category labels into Other",
-            value=default_options["group_rare_categories"],
-            disabled=not has_permission("remediate"),
-        )
+        with st.container(border=True, key="cleanup_actions_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Cleanup actions</div>'
+                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">Recommended remediation</div>',
+                unsafe_allow_html=True,
+            )
+            standardize_blank_strings = st.checkbox(
+                "Standardize blank strings as missing",
+                value=default_options["standardize_blank_strings"],
+                disabled=not has_permission("remediate"),
+            )
+            remove_duplicates = st.checkbox(
+                "Remove exact duplicate rows",
+                value=default_options["remove_duplicates"],
+                disabled=not has_permission("remediate"),
+            )
+            normalize_categories = st.checkbox(
+                "Normalize category labels",
+                value=default_options["normalize_categories"],
+                disabled=not has_permission("remediate"),
+            )
+            fill_operational_gaps = st.checkbox(
+                "Fill common missing operational values",
+                value=default_options["fill_operational_gaps"],
+                disabled=not has_permission("remediate"),
+            )
+            fix_negative_values = st.checkbox(
+                "Convert invalid negative values to missing",
+                value=default_options["fix_negative_values"],
+                disabled=not has_permission("remediate"),
+            )
+            repair_invalid_dates = st.checkbox(
+                "Convert invalid dates to missing",
+                value=default_options["repair_invalid_dates"],
+                disabled=not has_permission("remediate"),
+            )
+            cap_numeric_extremes = st.checkbox(
+                "Cap numeric extremes",
+                value=default_options["cap_numeric_extremes"],
+                disabled=not has_permission("remediate"),
+            )
+            group_rare_categories = st.checkbox(
+                "Group rare category labels into Other",
+                value=default_options["group_rare_categories"],
+                disabled=not has_permission("remediate"),
+            )
 
-        options = {
-            "standardize_blank_strings": standardize_blank_strings,
-            "remove_duplicates": remove_duplicates,
-            "normalize_categories": normalize_categories,
-            "fill_operational_gaps": fill_operational_gaps,
-            "fix_negative_values": fix_negative_values,
-            "repair_invalid_dates": repair_invalid_dates,
-            "cap_numeric_extremes": cap_numeric_extremes,
-            "group_rare_categories": group_rare_categories,
-        }
-        preview_df, preview_actions = apply_hygiene_fixes(st.session_state.source_df, options)
-        preview_summary = summarize_dataframe_change(st.session_state.source_df, preview_df)
-        st.dataframe(pd.DataFrame(preview_actions), use_container_width=True, hide_index=True)
-        preview_cols = st.columns(2)
-        preview_cols[0].metric("Rows before", preview_summary["rows_before"])
-        preview_cols[1].metric("Rows after", preview_summary["rows_after"])
-        preview_cols = st.columns(3)
-        preview_cols[0].metric("Cells changed", preview_summary["changed_cells"])
-        preview_cols[1].metric("Columns changed", preview_summary["changed_columns"])
-        preview_cols[2].metric("Missing cells", f"{preview_summary['missing_before']} → {preview_summary['missing_after']}")
+            options = {
+                "standardize_blank_strings": standardize_blank_strings,
+                "remove_duplicates": remove_duplicates,
+                "normalize_categories": normalize_categories,
+                "fill_operational_gaps": fill_operational_gaps,
+                "fix_negative_values": fix_negative_values,
+                "repair_invalid_dates": repair_invalid_dates,
+                "cap_numeric_extremes": cap_numeric_extremes,
+                "group_rare_categories": group_rare_categories,
+            }
+            preview_df, preview_actions = apply_hygiene_fixes(st.session_state.source_df, options)
+            preview_summary = summarize_dataframe_change(st.session_state.source_df, preview_df)
 
-        if has_permission("remediate"):
-            if st.button("Apply selected fixes", type="primary", use_container_width=True):
-                cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, options)
-                set_source_dataframe(cleaned_df, f"{st.session_state.source_label} • remediated")
-                st.session_state.last_cleaning_actions = actions
-                st.session_state.intake_confirmed = True
+            st.markdown(
+                '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:0.9rem;margin-bottom:0.35rem;">Remediation preview</div>',
+                unsafe_allow_html=True,
+            )
+            st.dataframe(pd.DataFrame(preview_actions), use_container_width=True, hide_index=True)
+
+            # Preview stats — capsule cards (matches intake summary style)
+            cells_changed = preview_summary["changed_cells"]
+            cols_changed = preview_summary["changed_columns"]
+            rows_before = preview_summary["rows_before"]
+            rows_after = preview_summary["rows_after"]
+            missing_delta = f"{preview_summary['missing_before']} → {preview_summary['missing_after']}"
+
+            st.markdown(
+                '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;">'
+                + _stat_capsule("Rows", f"{rows_before} → {rows_after}", "Before vs. after")
+                + _stat_capsule("Cells changed", str(cells_changed), f"{cols_changed} column(s)")
+                + _stat_capsule("Missing cells", missing_delta, "Before vs. after")
+                + '</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+
+            if has_permission("remediate"):
+                if st.button("Apply selected fixes", type="primary", use_container_width=True):
+                    cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, options)
+                    set_source_dataframe(cleaned_df, f"{st.session_state.source_label} * remediated")
+                    st.session_state.last_cleaning_actions = actions
+                    st.session_state.intake_confirmed = True
+                    st.session_state.hygiene_reviewed = True
+                    record_audit_event("Hygiene fixes applied", "; ".join(item["effect"] for item in actions), status="Completed")
+                    st.session_state.current_step = 2
+                    st.rerun()
+            else:
+                render_role_restriction("This role cannot modify the source dataset. Review the scan results and wait for Data Analyst action.")
+
+            if st.button(
+                "Mark scan review complete",
+                use_container_width=True,
+                disabled=st.session_state.hygiene_reviewed,
+            ):
                 st.session_state.hygiene_reviewed = True
-                record_audit_event("Hygiene fixes applied", "; ".join(item["effect"] for item in actions), status="Completed")
+                record_audit_event("Scan review completed", "Source quality and risk findings were acknowledged.", status="Completed")
                 st.session_state.current_step = 2
                 st.rerun()
-        else:
-            render_role_restriction("This role cannot modify the source dataset. Review the scan results and wait for Data Analyst action.")
-
-        if st.button(
-            "Mark scan review complete",
-            use_container_width=True,
-            disabled=st.session_state.hygiene_reviewed,
-        ):
-            st.session_state.hygiene_reviewed = True
-            record_audit_event("Scan review completed", "Source quality and risk findings were acknowledged.", status="Completed")
-            st.session_state.current_step = 2
-            st.rerun()
 
     if st.session_state.last_cleaning_actions:
-        st.success("Latest remediation applied")
-        st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
+        with st.container(border=True, key="last_remediation_panel"):
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Remediation applied</div>'
+                '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">Latest cleanup actions</div>',
+                unsafe_allow_html=True,
+            )
+            st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
 
 
 def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:

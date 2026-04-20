@@ -4439,7 +4439,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
 
 
 def render_step_two() -> None:
-    # Simplified, polished header (no redundant "Step 2 · OWNER SYSTEM" kicker)
+    # Simplified, polished header
     step_cfg = STEP_CONFIG[1]
     st.markdown(
         f'''
@@ -4498,11 +4498,11 @@ def render_step_two() -> None:
     missingness_frame = build_missingness_strategy_frame(st.session_state.profile)
     missingness_chart = missingness_frame[missingness_frame["Field"] != "No incomplete field"][["Field", "Missing %"]]
 
-    # Concern → action mapping for one-click fixing
+    # Concern → action mapping (backend actions)
     CONCERN_TO_ACTIONS = {
         "Missingness": [
             ("standardize_blank_strings", "Standardize blank strings as missing"),
-            ("fill_operational_gaps", "Fill common missing operational values"),
+            ("fill_operational_gaps", "Fill missing values (median / \"Unknown\")"),
         ],
         "Duplicate rows": [
             ("remove_duplicates", "Remove exact duplicate rows"),
@@ -4519,23 +4519,31 @@ def render_step_two() -> None:
         "Outliers": [
             ("cap_numeric_extremes", "Cap numeric extremes"),
         ],
+        "Extreme wait times": [
+            ("cap_numeric_extremes", "Cap numeric extremes"),
+        ],
     }
 
-    ALL_OPTION_KEYS = [k for actions in CONCERN_TO_ACTIONS.values() for (k, _) in actions] + ["group_rare_categories"]
+    # Concerns that carry caveats (some issues might remain after fix)
+    CONCERNS_WITH_CAVEATS = {
+        "Missingness": "Date / identifier fields cannot be auto-filled. See Missingness strategy tab.",
+        "Invalid dates": "Unparseable dates become missing — review the tab for details.",
+    }
 
-    def _apply_concerns_fix(concerns: list[str], audit_label: str) -> None:
-        """Apply only the actions tied to the given concern(s), preserving review flags."""
+    ALL_OPTION_KEYS = list({k for actions in CONCERN_TO_ACTIONS.values() for (k, _) in actions}) + ["group_rare_categories"]
+
+    def _apply_actions(action_keys: list[str], audit_label: str) -> None:
+        """Apply given backend action keys, preserving state."""
         targeted = {k: False for k in ALL_OPTION_KEYS}
-        for concern in concerns:
-            for action_key, _ in CONCERN_TO_ACTIONS.get(concern, []):
-                targeted[action_key] = True
+        for key in action_keys:
+            targeted[key] = True
 
         prev_intake = st.session_state.get("intake_confirmed", False)
         prev_reviewed = st.session_state.get("hygiene_reviewed", False)
         prev_step = st.session_state.get("current_step", 1)
         prev_actions = list(st.session_state.get("last_cleaning_actions") or [])
 
-        # Push undo snapshot BEFORE applying the fix
+        # Push undo snapshot
         undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
         undo_stack.append({
             "source_df": st.session_state.source_df.copy(),
@@ -4544,28 +4552,21 @@ def render_step_two() -> None:
             "last_cleaning_actions": prev_actions,
             "audit_label": audit_label,
         })
-        # Keep at most 10 undo snapshots to bound memory
         st.session_state.hygiene_undo_stack = undo_stack[-10:]
 
         cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, targeted)
         base_label = st.session_state.source_label.split(" * remediated")[0]
         set_source_dataframe(cleaned_df, f"{base_label} * remediated")
 
-        # Restore state that set_source_dataframe reset
         st.session_state.intake_confirmed = prev_intake or True
-        st.session_state.hygiene_reviewed = prev_reviewed  # don\'t auto-confirm review
-        st.session_state.current_step = prev_step  # keep user on Step 2
+        st.session_state.hygiene_reviewed = prev_reviewed
+        st.session_state.current_step = prev_step
         st.session_state.last_cleaning_actions = prev_actions + list(actions)
 
-        record_audit_event(
-            audit_label,
-            "; ".join(item["effect"] for item in actions),
-            status="Completed",
-        )
+        record_audit_event(audit_label, "; ".join(item["effect"] for item in actions), status="Completed")
         st.rerun()
 
     def _undo_last_fix() -> None:
-        """Restore the most recent pre-fix snapshot."""
         undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
         if not undo_stack:
             return
@@ -4575,7 +4576,6 @@ def render_step_two() -> None:
         prev_step = st.session_state.get("current_step", 1)
         prev_reviewed = st.session_state.get("hygiene_reviewed", False)
 
-        # Restore source dataframe (re-runs profile + hygiene via set_source_dataframe)
         set_source_dataframe(snapshot["source_df"], snapshot["source_label"])
         st.session_state.source_file_size = snapshot.get("source_file_size")
         st.session_state.last_cleaning_actions = snapshot["last_cleaning_actions"]
@@ -4583,11 +4583,7 @@ def render_step_two() -> None:
         st.session_state.hygiene_reviewed = prev_reviewed
         st.session_state.current_step = prev_step
 
-        record_audit_event(
-            "Remediation undone",
-            f"Reverted: {snapshot['audit_label']}",
-            status="Completed",
-        )
+        record_audit_event("Remediation undone", f"Reverted: {snapshot['audit_label']}", status="Completed")
         st.rerun()
 
     # ─────────────────────────────────────────────────────────────
@@ -4632,7 +4628,7 @@ def render_step_two() -> None:
         )
 
     # ─────────────────────────────────────────────────────────────
-    # C. ISSUES & ONE-CLICK FIXES
+    # C. ISSUES & FIXES — REORGANIZED (dataset-level + field-level)
     # ─────────────────────────────────────────────────────────────
     def _severity_badge(severity: str) -> str:
         if severity == "High":
@@ -4649,117 +4645,199 @@ def render_step_two() -> None:
             f'{severity}</span>'
         )
 
-    # Group issues by concern
-    concern_groups: dict[str, list[dict[str, Any]]] = {}
+    # Partition issues: dataset-level vs field-level, and skip non-actionable ones
+    dataset_issues: list[dict[str, Any]] = []
+    field_issues: dict[str, list[dict[str, Any]]] = {}
     for issue in hygiene.get("issues", []):
-        concern_groups.setdefault(issue["concern"], []).append(issue)
+        col = issue.get("column", "")
+        concern = issue.get("concern", "")
+        if col == "Dataset" or concern == "Duplicate rows":
+            dataset_issues.append(issue)
+        elif concern in CONCERN_TO_ACTIONS:
+            field_issues.setdefault(col, []).append(issue)
+        # Other concerns without fix actions (e.g., Identifier handling) are skipped here;
+        # they\'re informational and carried in the decision log
 
-    # Only concerns that map to a real fix action are "fixable"
-    fixable_concerns = [c for c in concern_groups.keys() if c in CONCERN_TO_ACTIONS]
-    total_fixable_issues = sum(len(concern_groups[c]) for c in fixable_concerns)
+    total_fixable = len(dataset_issues) + sum(len(v) for v in field_issues.values())
+    total_fields_affected = len(field_issues)
 
     with st.container(border=True, key="findings_remediation_panel"):
-        header_right = ""
-        if total_fixable_issues > 0 and has_permission("remediate"):
-            # Top-right bulk "Fix all" — will be placed via a column layout after this markdown
-            header_right = f'<span style="font-size:0.82rem;color:#668097;">{total_fixable_issues} fixable issue(s)</span>'
+        summary_text = ""
+        if total_fixable > 0:
+            parts = []
+            if total_fields_affected > 0:
+                parts.append(f"{total_fields_affected} field(s)")
+            if dataset_issues:
+                parts.append(f"{len(dataset_issues)} dataset-level issue(s)")
+            summary_text = f'<span style="font-size:0.82rem;color:#668097;">Across {" and ".join(parts)}</span>'
 
         st.markdown(
             '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.3rem;gap:1rem;flex-wrap:wrap;">'
             '<div>'
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Issues detected</div>'
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Issues &amp; fixes</div>'
             '<div style="font-size:1.15rem;font-weight:600;color:#17324d;line-height:1.3;">Review each issue and apply the recommended fix</div>'
             '</div>'
-            f'<div>{header_right}</div>'
+            f'<div>{summary_text}</div>'
             '</div>',
             unsafe_allow_html=True,
         )
 
-        if not concern_groups:
+        if total_fixable == 0:
             st.markdown(
                 '<div style="padding:1.1rem 1.15rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:12px;margin-top:0.3rem;">'
                 '<div style="display:flex;align-items:center;gap:0.7rem;">'
                 '<span style="width:32px;height:32px;border-radius:9px;background:#136B48;color:#FFFFFF;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">&#10003;</span>'
                 '<div>'
                 '<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.1rem;">Clean</div>'
-                '<div style="font-size:0.96rem;color:#17324d;font-weight:600;">No hygiene issues detected</div>'
-                '<div style="font-size:0.82rem;color:#475569;margin-top:0.1rem;">The source dataset passed all agent hygiene checks.</div>'
+                '<div style="font-size:0.96rem;color:#17324d;font-weight:600;">No fixable issues detected</div>'
+                '<div style="font-size:0.82rem;color:#475569;margin-top:0.1rem;">The source dataset passed all automated hygiene checks.</div>'
                 '</div></div></div>',
                 unsafe_allow_html=True,
             )
         else:
-            # Fix all button (bulk)
-            if total_fixable_issues > 1 and has_permission("remediate"):
+            # Bulk "Fix all" button
+            if total_fixable > 1 and has_permission("remediate"):
+                all_action_keys = set()
+                for issue in dataset_issues:
+                    for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
+                        all_action_keys.add(k)
+                for col_issues in field_issues.values():
+                    for issue in col_issues:
+                        for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
+                            all_action_keys.add(k)
+
                 fix_all_col, _spacer = st.columns([1, 2.5])
                 if fix_all_col.button(
-                    f"Fix all {total_fixable_issues} issues",
+                    f"Apply all {total_fixable} recommended fixes",
                     type="primary",
                     use_container_width=True,
                     key="fix_all_issues_btn",
                 ):
-                    _apply_concerns_fix(fixable_concerns, "Bulk remediation applied")
+                    _apply_actions(list(all_action_keys), "Bulk remediation applied")
 
-            # Per-concern issue cards
-            for concern, issues_list in concern_groups.items():
-                severities = [i.get("severity", "Low") for i in issues_list]
-                if "High" in severities:
-                    top_sev = "High"
-                elif "Medium" in severities:
-                    top_sev = "Medium"
-                else:
-                    top_sev = "Low"
-
-                affected_fields = sorted({i["column"] for i in issues_list if i.get("column") and i["column"] != "Dataset"})
-                finding_texts = [i.get("finding", "") for i in issues_list]
-                has_fix = concern in CONCERN_TO_ACTIONS
-
-                chip_style = "background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.76rem;color:#17324d;margin-right:0.2rem;"
-                if affected_fields:
-                    fields_html = (
-                        '<div style="font-size:0.8rem;color:#668097;margin-top:0.3rem;">'
-                        '<span style="font-weight:600;color:#475569;">Affects:</span> '
-                        + " ".join(f'<code style="{chip_style}">{f}</code>' for f in affected_fields)
-                        + '</div>'
-                    )
-                else:
-                    fields_html = ''
-
-                findings_list_html = ''.join(
-                    f'<li style="font-size:0.85rem;color:#475569;line-height:1.5;margin-bottom:0.15rem;">{text}</li>'
-                    for text in finding_texts if text
-                )
-
-                # Render card wrapper + issue details via markdown
+            # ── Dataset-level section ──
+            if dataset_issues:
                 st.markdown(
-                    f'<div style="padding:0.9rem 1.1rem 0.4rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-top:0.7rem;">'
-                    f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.3rem;flex-wrap:wrap;">'
-                    f'{_severity_badge(top_sev)}'
-                    f'<div style="font-size:1rem;font-weight:600;color:#17324d;">{concern}</div>'
-                    f'<div style="font-size:0.78rem;color:#8A9CAC;">{len(issues_list)} issue(s)</div>'
-                    f'</div>'
-                    f'{fields_html}'
-                    f'<ul style="margin:0.4rem 0 0.5rem 1.1rem;padding:0;">{findings_list_html}</ul>'
-                    f'</div>',
+                    '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:1rem;margin-bottom:0.4rem;">Dataset-level issues</div>',
+                    unsafe_allow_html=True,
+                )
+                for issue in dataset_issues:
+                    severity = issue.get("severity", "Low")
+                    concern = issue.get("concern", "")
+                    finding = issue.get("finding", "")
+
+                    st.markdown(
+                        f'<div style="padding:0.9rem 1.1rem 0.4rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-bottom:0.5rem;">'
+                        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.35rem;flex-wrap:wrap;">'
+                        f'{_severity_badge(severity)}'
+                        f'<div style="font-size:1rem;font-weight:600;color:#17324d;">{concern}</div>'
+                        f'</div>'
+                        f'<div style="font-size:0.86rem;color:#475569;line-height:1.5;margin-bottom:0.3rem;">{finding}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    if has_permission("remediate"):
+                        action_keys = [k for (k, _) in CONCERN_TO_ACTIONS.get(concern, [])]
+                        btn_col, _blank = st.columns([1, 2.5])
+                        if btn_col.button(
+                            f"Fix: {concern}",
+                            key=f"fix_ds_{concern.replace(' ', '_')}_btn",
+                            use_container_width=True,
+                        ):
+                            _apply_actions(action_keys, f"Fix applied: {concern}")
+
+            # ── Field-level section ──
+            if field_issues:
+                st.markdown(
+                    '<div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#668097;margin-top:1.2rem;margin-bottom:0.4rem;">Field-level issues</div>',
                     unsafe_allow_html=True,
                 )
 
-                # Fix button — placed right after the card via button column
-                if has_fix and has_permission("remediate"):
-                    action_labels = [lbl for (_, lbl) in CONCERN_TO_ACTIONS.get(concern, [])]
-                    fix_help = "Applies: " + "; ".join(action_labels)
-                    btn_col, _blank = st.columns([1, 2.5])
-                    if btn_col.button(
-                        f"Fix {concern.lower()}",
-                        key=f"fix_{concern.replace(' ', '_')}_btn",
-                        help=fix_help,
-                        use_container_width=True,
-                    ):
-                        _apply_concerns_fix([concern], f"Fix applied: {concern}")
-                elif has_fix and not has_permission("remediate"):
-                    st.caption("_Data Analyst role required to apply this fix._")
+                # Sort fields by severity priority (High first)
+                def _field_priority(col: str) -> int:
+                    sevs = [i.get("severity", "Low") for i in field_issues[col]]
+                    if "High" in sevs:
+                        return 0
+                    if "Medium" in sevs:
+                        return 1
+                    return 2
+
+                sorted_fields = sorted(field_issues.keys(), key=_field_priority)
+
+                for col in sorted_fields:
+                    col_issues = field_issues[col]
+                    # Top severity for field badge
+                    sevs = [i.get("severity", "Low") for i in col_issues]
+                    if "High" in sevs:
+                        top_sev = "High"
+                    elif "Medium" in sevs:
+                        top_sev = "Medium"
+                    else:
+                        top_sev = "Low"
+
+                    # Collect unique concerns affecting this field (with caveats)
+                    field_concerns = []
+                    caveats = set()
+                    for issue in col_issues:
+                        c = issue["concern"]
+                        if c not in field_concerns:
+                            field_concerns.append(c)
+                        if c in CONCERNS_WITH_CAVEATS:
+                            caveats.add(CONCERNS_WITH_CAVEATS[c])
+
+                    # Build issue list rows
+                    issue_rows_html = ""
+                    for issue in col_issues:
+                        c_severity = issue.get("severity", "Low")
+                        c_concern = issue.get("concern", "")
+                        c_finding = issue.get("finding", "")
+                        issue_rows_html += (
+                            f'<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid #EEF3F8;">'
+                            f'{_severity_badge(c_severity)}'
+                            f'<div style="min-width:0;flex:1;">'
+                            f'<div style="font-size:0.88rem;font-weight:600;color:#17324d;">{c_concern}</div>'
+                            f'<div style="font-size:0.8rem;color:#668097;line-height:1.4;margin-top:0.05rem;">{c_finding}</div>'
+                            f'</div></div>'
+                        )
+
+                    caveats_html = ""
+                    if caveats:
+                        caveats_html = (
+                            '<div style="margin-top:0.5rem;padding:0.5rem 0.7rem;background:#FFF6E3;border:1px solid #F3DBA6;border-radius:8px;font-size:0.78rem;color:#7A5219;line-height:1.5;">'
+                            '<span style="font-weight:700;">Note:</span> '
+                            + " ".join(caveats)
+                            + '</div>'
+                        )
+
+                    st.markdown(
+                        f'<div style="padding:0.9rem 1.1rem 0.5rem 1.1rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:14px;margin-bottom:0.5rem;">'
+                        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;flex-wrap:wrap;">'
+                        f'{_severity_badge(top_sev)}'
+                        f'<code style="background:#EBF1F7;padding:0.2rem 0.55rem;border-radius:6px;font-size:0.9rem;color:#08467D;font-weight:700;">{col}</code>'
+                        f'<span style="font-size:0.8rem;color:#8A9CAC;">{len(col_issues)} issue(s)</span>'
+                        f'</div>'
+                        f'{issue_rows_html}'
+                        f'{caveats_html}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    if has_permission("remediate"):
+                        action_keys = set()
+                        for issue in col_issues:
+                            for (k, _) in CONCERN_TO_ACTIONS.get(issue["concern"], []):
+                                action_keys.add(k)
+                        btn_col, _blank = st.columns([1, 2.5])
+                        if btn_col.button(
+                            f"Fix all issues in {col}",
+                            key=f"fix_field_{col}_btn",
+                            use_container_width=True,
+                        ):
+                            _apply_actions(list(action_keys), f"Field fix: {col}")
 
     # ─────────────────────────────────────────────────────────────
-    # D. APPLIED FIXES (shown only if any were applied)
+    # D. APPLIED FIXES (with undo)
     # ─────────────────────────────────────────────────────────────
     if st.session_state.last_cleaning_actions:
         with st.container(border=True, key="last_remediation_panel"):
@@ -4774,7 +4852,7 @@ def render_step_two() -> None:
                     unsafe_allow_html=True,
                 )
             with header_cols[1]:
-                st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style=\"height:0.5rem;\"></div>", unsafe_allow_html=True)
                 if st.button(
                     "↶ Undo last fix",
                     disabled=not undo_available or not has_permission("remediate"),
@@ -4823,7 +4901,7 @@ def render_step_two() -> None:
     # ─────────────────────────────────────────────────────────────
     # F. BOTTOM NAV — Mark complete + Back to Step 1
     # ─────────────────────────────────────────────────────────────
-    st.markdown("<div style='height:0.4rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style=\"height:0.4rem;\"></div>", unsafe_allow_html=True)
     nav_cols = st.columns([1, 1], gap="small")
     if nav_cols[0].button(
         "Mark scan review complete",
@@ -4842,6 +4920,41 @@ def render_step_two() -> None:
     ):
         st.session_state.current_step = 0
         st.rerun()
+
+    # ─────────────────────────────────────────────────────────────
+    # G. AGENT DECISION LOG (bottom of page, per user request)
+    # ─────────────────────────────────────────────────────────────
+    st.markdown("<div style=\"height:0.6rem;\"></div>", unsafe_allow_html=True)
+    metadata_local = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+    controls_local = st.session_state.controls
+    readiness = compute_agent_readiness(
+        profile=st.session_state.get("profile"),
+        hygiene=st.session_state.get("hygiene"),
+        metadata=metadata_local, controls=controls_local,
+        validation=st.session_state.get("validation"),
+        intake_confirmed=st.session_state.get("intake_confirmed", False),
+        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+        settings_reviewed=st.session_state.get("settings_reviewed", False),
+        metadata_status=st.session_state.get("metadata_status", "Draft"),
+        synthetic_ready=st.session_state.get("synthetic_df") is not None,
+        results_shared=bool(st.session_state.get("results_shared_at")),
+    )
+    inline_hygiene = classify_hygiene_issues(hygiene) if hygiene is not None else None
+    render_consolidated_decision_log(
+        readiness=readiness,
+        profile=st.session_state.get("profile"),
+        hygiene=hygiene,
+        metadata=metadata_local, controls=controls_local,
+        generation_summary=st.session_state.get("generation_summary"),
+        validation=st.session_state.get("validation"),
+        intake_confirmed=st.session_state.get("intake_confirmed", False),
+        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+        settings_reviewed=st.session_state.get("settings_reviewed", False),
+        metadata_status=st.session_state.get("metadata_status", "Draft"),
+        synthetic_ready=st.session_state.get("synthetic_df") is not None,
+        results_shared=bool(st.session_state.get("results_shared_at")),
+        classified_hygiene=inline_hygiene,
+    )
 
 
 def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -5782,7 +5895,9 @@ def main() -> None:
 
     if current_step == 0:
         # Step 0: Agent Decision Log is rendered INSIDE render_step_one at the proper position
-        # (between the upload+readiness area and the intake summary)
+        pass
+    elif current_step == 1:
+        # Step 1 (Scan Data): Agent Decision Log is rendered at the BOTTOM inside render_step_two
         pass
     else:
         # Steps 1+: full consolidated decision log with readiness engine

@@ -2810,18 +2810,21 @@ def current_workflow_stage(metadata: list[dict[str, Any]], controls: dict[str, A
 
 
 def build_progress_tracker_rows(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[dict[str, str]]:
-    stage = current_workflow_stage(metadata, controls)
+    inferred_stage = current_workflow_stage(metadata, controls)
+    # Use the user's actual current page as the highlight anchor so the nav
+    # stays in sync with what's rendered below (critical for step 6 and step 7).
+    active_step = int(st.session_state.get("current_step", inferred_stage))
     all_complete = bool(st.session_state.results_shared_at)
     rows: list[dict[str, str]] = []
     status_labels = step_status_labels(metadata, controls)
     for index, step in enumerate(STEP_CONFIG):
-        if all_complete:
-            state = "complete"
-        elif index < stage:
-            state = "complete"
-        elif index == stage:
+        if index == active_step:
             state = "current"
-        elif index == stage + 1:
+        elif index < max(inferred_stage, active_step):
+            state = "complete"
+        elif all_complete:
+            state = "complete"
+        elif index == max(inferred_stage, active_step) + 1:
             state = "next"
         else:
             state = "future"
@@ -4895,13 +4898,37 @@ def render_step_seven(metadata: list[dict[str, Any]], controls: dict[str, Any]) 
     analysis_mode = st.session_state.step7_analysis_mode
 
     if analysis_mode == "Local analysis":
-        st.markdown("**Synthetic package — local analysis**")
-        summary_cols = st.columns(4)
-        summary_cols[0].metric("Records", len(synthetic_df))
-        summary_cols[1].metric("Fields", len(synthetic_df.columns))
         numeric_cols = synthetic_df.select_dtypes(include="number").columns.tolist()
-        summary_cols[2].metric("Numeric fields", len(numeric_cols))
-        summary_cols[3].metric("Missing cells", int(synthetic_df.isna().sum().sum()))
+        missing_cells = int(synthetic_df.isna().sum().sum())
+
+        # Styled capsule cards (matching governed workflow panels)
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#08467D", bg: str = "#EBF1F7") -> str:
+            return (
+                f'<div style="flex:1;min-width:0;padding:0.75rem 0.95rem;background:{bg};'
+                f'border:1px solid {accent}22;border-radius:10px;">'
+                f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{accent};margin-bottom:0.2rem;">{kicker}</div>'
+                f'<div style="font-size:1.25rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
+                f'<div style="font-size:0.74rem;color:#668097;margin-top:0.15rem;line-height:1.35;">{detail}</div>'
+                f'</div>'
+            )
+
+        stats_html = (
+            '<div class="action-shell" style="margin-bottom:0.85rem;">'
+            '<h4>Synthetic package — local analysis</h4>'
+            '<div style="display:flex;gap:0.65rem;flex-wrap:wrap;">'
+            + _stat_capsule("Records", f"{len(synthetic_df):,}", "Synthetic rows in package")
+            + _stat_capsule("Fields", str(len(synthetic_df.columns)), "Columns included")
+            + _stat_capsule("Numeric fields", str(len(numeric_cols)), "Eligible for distribution view")
+            + _stat_capsule(
+                "Missing cells",
+                f"{missing_cells:,}",
+                "Gaps retained from metadata",
+                accent=("#136B48" if missing_cells == 0 else "#9C6A17"),
+                bg=("#EDF9F3" if missing_cells == 0 else "#FFF6E3"),
+            )
+            + '</div></div>'
+        )
+        st.markdown(stats_html, unsafe_allow_html=True)
 
         preview_tab, stats_tab, dist_tab = st.tabs(["Data preview", "Descriptive statistics", "Distribution"])
         with preview_tab:

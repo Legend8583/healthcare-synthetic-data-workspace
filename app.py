@@ -3652,11 +3652,11 @@ def render_login_screen() -> None:
                 margin-bottom: 1.8rem;
             }
 
-            /* Input styling */
+            /* Input styling — matches demo button shape for visual consistency */
             .login-right-panel [data-baseweb="input"] {
-                border-radius: 10px !important;
+                border-radius: 12px !important;
                 border: 1.5px solid #CBD5E1 !important;
-                min-height: 48px !important;
+                min-height: 52px !important;
                 box-sizing: border-box !important;
                 background: #FFFFFF !important;
             }
@@ -3669,11 +3669,18 @@ def render_login_screen() -> None:
             }
             .login-right-panel [data-baseweb="input"] input,
             .login-right-panel [data-baseweb="base-input"] input {
-                padding: 0.7rem 0.9rem !important;
+                padding: 0.85rem 1rem !important;
                 font-size: 0.95rem !important;
                 line-height: 1.5 !important;
                 color: #0F172A !important;
                 background: transparent !important;
+            }
+            /* Placeholder — muted grey so it reads as hint text, not filled value */
+            .login-right-panel [data-baseweb="input"] input::placeholder,
+            .login-right-panel [data-baseweb="base-input"] input::placeholder {
+                color: #94A3B8 !important;
+                opacity: 1 !important;
+                font-weight: 400 !important;
             }
             .login-right-panel .stTextInput label p,
             .login-right-panel .stTextInput label {
@@ -3822,6 +3829,12 @@ def render_login_screen() -> None:
 
         st.markdown(
             """
+            <div style="text-align:center;margin:0.9rem 0 0.3rem 0;">
+                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request"
+                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.85rem;margin:0 0.8rem;">Forgot password?</a>
+                <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access"
+                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.85rem;margin:0 0.8rem;">Request access</a>
+            </div>
             <div class="login-divider">
                 <div class="login-divider-line"></div>
                 <div class="login-divider-text">or continue as demo</div>
@@ -3843,16 +3856,10 @@ def render_login_screen() -> None:
             unsafe_allow_html=True,
         )
 
-    # Full-width bottom footer — centered links + demo credential + security notice
+    # Full-width bottom footer — demo credential + security notice only
     st.markdown(
         """
         <div style="margin-top:2rem;padding:1.5rem 1rem 1rem 1rem;border-top:1px solid #E2E8F0;text-align:center;">
-            <div style="margin-bottom:0.7rem;">
-                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request"
-                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.88rem;margin:0 0.8rem;">Forgot password?</a>
-                <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access"
-                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.88rem;margin:0 0.8rem;">Request access</a>
-            </div>
             <div style="font-size:0.82rem;color:#64748B;margin-bottom:0.4rem;">
                 Demo credential for all access profiles:
                 <code style="background:#F1F5F9;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.78rem;color:#475569;margin-left:0.3rem;">test</code>

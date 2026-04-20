@@ -3677,10 +3677,16 @@ def render_login_screen() -> None:
             }
             /* Placeholder — muted grey so it reads as hint text, not filled value */
             .login-right-panel [data-baseweb="input"] input::placeholder,
-            .login-right-panel [data-baseweb="base-input"] input::placeholder {
+            .login-right-panel [data-baseweb="base-input"] input::placeholder,
+            .login-right-panel .stTextInput input::placeholder,
+            .login-right-panel input::placeholder,
+            .login-right-panel [data-baseweb="input"] input::-webkit-input-placeholder,
+            .login-right-panel [data-baseweb="input"] input::-moz-placeholder,
+            .login-right-panel [data-baseweb="input"] input:-ms-input-placeholder {
                 color: #94A3B8 !important;
                 opacity: 1 !important;
                 font-weight: 400 !important;
+                -webkit-text-fill-color: #94A3B8 !important;
             }
             .login-right-panel .stTextInput label p,
             .login-right-panel .stTextInput label {

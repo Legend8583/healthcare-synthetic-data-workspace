@@ -757,11 +757,17 @@ def build_metadata_review_artifact(
     metadata: list[dict[str, Any]],
     profile: dict[str, Any],
     hygiene_classified: list[dict[str, Any]],
+    sensitivity_fn: Any = None,
+    generation_rule_fn: Any = None,
 ) -> list[dict[str, Any]]:
     """Build a formal metadata lineage artifact.
 
-    Shows for each field: extracted metadata, agent recommendation,
-    final approved assumption, and effect on synthetic generation.
+    Shows for each field: sensitivity, extracted metadata, agent recommendation,
+    final approved assumption, generation rule, and effect on synthetic generation.
+
+    Optional sensitivity_fn(item) -> str and generation_rule_fn(item) -> str
+    callbacks let the caller inject app-level logic (see app.metadata_sensitivity
+    and app.metadata_handling).
     """
     artifact = []
     hygiene_by_col: dict[str, list[dict[str, Any]]] = {}
@@ -864,12 +870,47 @@ def build_metadata_review_artifact(
         else:
             status = "unchanged"
 
+        # Sensitivity (injected from app layer when available)
+        sensitivity = sensitivity_fn(item) if sensitivity_fn else "Operational"
+
+        # Generation rule (technical rule applied during synthesis)
+        if generation_rule_fn:
+            generation_rule = generation_rule_fn(item)
+        else:
+            # Fallback: derive from action + role
+            if not item["include"]:
+                generation_rule = "Dropped"
+            elif action == "Tokenize":
+                generation_rule = "Surrogate tokenization"
+            elif action == "Date shift":
+                generation_rule = "Jitter + bootstrap"
+            elif action == "Month only":
+                generation_rule = "Truncate to month"
+            elif action == "Coarse geography":
+                generation_rule = "Coarse bucketing"
+            elif action == "Group text":
+                generation_rule = "Category grouping"
+            elif action == "Group rare categories":
+                generation_rule = "Rare collapse"
+            elif action == "Clip extremes":
+                generation_rule = "Percentile clipping"
+            elif role == "numeric":
+                generation_rule = "Bootstrap + noise"
+            elif role == "categorical":
+                generation_rule = "Empirical sampling"
+            elif role == "date":
+                generation_rule = "Date bootstrap"
+            else:
+                generation_rule = "Preserve distribution"
+
         artifact.append({
             "column": col,
             "role": role,
+            "sensitivity": sensitivity,
             "extracted": extracted,
             "recommended": recommended,
             "approved": approved,
+            "generation_rule": generation_rule,
             "effect": effect,
             "status": status,
             "included": item["include"],
@@ -880,58 +921,92 @@ def build_metadata_review_artifact(
 
 
 def render_metadata_review_artifact(artifact: list[dict[str, Any]]) -> None:
-    """Render metadata lineage table: extracted > recommended > approved > effect."""
+    """Render unified metadata lineage table as Page 3 primary artifact.
+
+    Columns: Field | Sensitivity | Extracted metadata | Approved assumption
+             (with demoted agent recommendation) | Generation rule | Effect
+    """
     import html as _html
     status_labels = {
         "unchanged": ("Preserved", "#668097"),
         "adjusted": ("Adjusted", "#004B8B"),
         "excluded": ("Excluded", "#668097"),
-        "blocker_pending": ("Blocker", "#9D2B3C"),
+        "blocker_pending": ("Blocker held", "#9D2B3C"),
+    }
+    sensitivity_styles = {
+        "Restricted": ("#9D2B3C", "#FFF1F3"),
+        "Sensitive": ("#9C6A17", "#FFF6E3"),
+        "Operational": ("#668097", "rgba(214,226,236,0.4)"),
     }
 
     rows = []
     for item in artifact:
         label, color = status_labels.get(item["status"], ("Unknown", "#668097"))
+        sens = item.get("sensitivity", "Operational")
+        sens_color, sens_bg = sensitivity_styles.get(sens, sensitivity_styles["Operational"])
+
         col = _html.escape(item["column"])
         role = _html.escape(item["role"])
         extracted = _html.escape(item["extracted"])
         recommended = _html.escape(item["recommended"])
         approved = _html.escape(item["approved"])
+        generation_rule = _html.escape(item.get("generation_rule", ""))
         effect = _html.escape(item["effect"])
+        sens_label = _html.escape(sens)
 
         rows.append(
             f'<tr style="border-bottom:1px solid rgba(214,226,236,0.5);">'
-            f'<td style="padding:0.5rem 0.6rem;font-weight:600;font-size:0.86rem;vertical-align:top;">{col}<div style="font-size:0.72rem;color:#668097;font-weight:500;margin-top:0.1rem;">{role}</div></td>'
-            f'<td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:#668097;vertical-align:top;">{extracted}</td>'
-            f'<td style="padding:0.5rem 0.4rem;font-size:0.82rem;color:#2D3E50;vertical-align:top;">{recommended}</td>'
-            f'<td style="padding:0.5rem 0.4rem;vertical-align:top;">'
-            f'<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:999px;font-size:0.72rem;font-weight:700;color:{color};background:{color}11;border:1px solid {color}33;white-space:nowrap;">{label}</span>'
-            f'<div style="font-size:0.78rem;color:#2D3E50;margin-top:0.25rem;">{approved}</div></td>'
-            f'<td style="padding:0.5rem 0.4rem;font-size:0.78rem;color:#668097;line-height:1.4;vertical-align:top;">{effect}</td>'
+            # Field
+            f'<td style="padding:0.55rem 0.6rem;font-weight:600;font-size:0.86rem;vertical-align:top;">'
+            f'{col}<div style="font-size:0.72rem;color:#668097;font-weight:500;margin-top:0.1rem;">{role}</div></td>'
+            # Sensitivity pill
+            f'<td style="padding:0.55rem 0.4rem;vertical-align:top;">'
+            f'<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.72rem;font-weight:700;'
+            f'color:{sens_color};background:{sens_bg};border:1px solid {sens_color}33;white-space:nowrap;">{sens_label}</span></td>'
+            # Extracted metadata
+            f'<td style="padding:0.55rem 0.4rem;font-size:0.82rem;color:#668097;vertical-align:top;">{extracted}</td>'
+            # Approved assumption + demoted agent recommendation
+            f'<td style="padding:0.55rem 0.4rem;vertical-align:top;">'
+            f'<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:999px;font-size:0.7rem;font-weight:700;'
+            f'color:{color};background:{color}11;border:1px solid {color}33;white-space:nowrap;">{label}</span>'
+            f'<div style="font-size:0.82rem;color:#2D3E50;margin-top:0.25rem;line-height:1.35;">{approved}</div>'
+            f'<div style="font-size:0.72rem;color:#8A9CAC;margin-top:0.2rem;font-style:italic;line-height:1.3;">Agent suggested: {recommended}</div>'
+            f'</td>'
+            # Generation rule
+            f'<td style="padding:0.55rem 0.4rem;font-size:0.78rem;color:#2D3E50;vertical-align:top;font-family:monospace;">{generation_rule}</td>'
+            # Effect
+            f'<td style="padding:0.55rem 0.4rem;font-size:0.78rem;color:#668097;line-height:1.4;vertical-align:top;">{effect}</td>'
             f'</tr>'
         )
 
     included = sum(1 for a in artifact if a["included"])
     blockers = sum(1 for a in artifact if a["blocker"])
     adjusted = sum(1 for a in artifact if a["status"] == "adjusted")
+    restricted = sum(1 for a in artifact if a.get("sensitivity") == "Restricted" and a["included"])
+    sensitive = sum(1 for a in artifact if a.get("sensitivity") == "Sensitive" and a["included"])
 
     th_style = 'padding:0.5rem 0.4rem;text-align:left;color:#668097;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
 
     html_out = (
         '<div class="action-shell">'
         '<h4>Metadata lineage artifact</h4>'
-        f'<div style="display:flex;gap:1.2rem;margin:0.5rem 0 0.75rem 0;font-size:0.84rem;color:#668097;">'
-        f'<span><strong style="color:#2D3E50;">{included}</strong> fields included</span>'
-        f'<span><strong style="color:#004B8B;">{adjusted}</strong> adjusted from baseline</span>'
-        f'<span><strong style="color:#9D2B3C;">{blockers}</strong> blocker(s) pending</span>'
+        '<div style="font-size:0.8rem;color:#668097;margin-bottom:0.5rem;line-height:1.45;">'
+        'Primary record of how each field moves from extracted metadata to approved generation behavior.</div>'
+        f'<div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin:0.3rem 0 0.8rem 0;font-size:0.82rem;color:#668097;">'
+        f'<span><strong style="color:#2D3E50;">{included}</strong> included</span>'
+        f'<span><strong style="color:#9D2B3C;">{restricted}</strong> restricted</span>'
+        f'<span><strong style="color:#9C6A17;">{sensitive}</strong> sensitive</span>'
+        f'<span><strong style="color:#004B8B;">{adjusted}</strong> adjusted</span>'
+        f'<span><strong style="color:#9D2B3C;">{blockers}</strong> blocker(s)</span>'
         f'</div>'
         '<div style="overflow-x:auto;">'
         '<table style="width:100%;border-collapse:collapse;font-size:0.86rem;">'
         f'<thead><tr style="border-bottom:2px solid #DDE5ED;">'
         f'<th style="padding:0.5rem 0.6rem;text-align:left;{th_style}">Field</th>'
+        f'<th style="{th_style}">Sensitivity</th>'
         f'<th style="{th_style}">Extracted metadata</th>'
-        f'<th style="{th_style}">Agent recommendation</th>'
         f'<th style="{th_style}">Approved assumption</th>'
+        f'<th style="{th_style}">Generation rule</th>'
         f'<th style="{th_style}">Effect on generation</th>'
         f'</tr></thead>'
         '<tbody>' + "".join(rows) + '</tbody>'
@@ -1084,8 +1159,13 @@ def render_consolidated_decision_log(
     metadata_status: str,
     synthetic_ready: bool,
     results_shared: bool,
+    classified_hygiene: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Single coherent agent controller: status + decisions + blockers + next action."""
+    """Single coherent agent controller: status + decisions + blockers + next action.
+
+    Optional classified_hygiene parameter renders hygiene findings inline
+    (used on Scan Data step to avoid duplicating a separate hygiene card).
+    """
     import html as _html
 
     status = readiness["status"]
@@ -1113,27 +1193,61 @@ def render_consolidated_decision_log(
         f'</div>'
         f'<div style="text-align:right;font-size:0.78rem;color:#668097;">Confidence: <strong style="color:{badge_color};">{confidence}</strong></div>'
         f'</div>'
-        f'<div style="font-size:0.88rem;color:#668097;line-height:1.5;margin-bottom:0.5rem;">'
+        f'<div style="font-size:0.88rem;color:#668097;line-height:1.5;margin-bottom:0.4rem;">'
         f'<strong style="color:#2D3E50;">Next action:</strong> {recommendation}</div>'
     )
 
-    # Blockers + warnings compact
-    issues_html = ""
-    if blockers:
-        items = " ".join(f'<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.76rem;background:#FFF1F3;color:#9D2B3C;border:1px solid #9D2B3C33;margin:0.15rem 0.2rem;">{_html.escape(b)}</span>' for b in blockers)
-        issues_html += f'<div style="margin-bottom:0.4rem;"><span style="font-size:0.72rem;font-weight:700;color:#9D2B3C;text-transform:uppercase;letter-spacing:0.06em;">Blockers:</span> {items}</div>'
-    if warnings:
-        items = " ".join(f'<span style="display:inline-block;padding:0.15rem 0.5rem;border-radius:999px;font-size:0.76rem;background:#FFF6E3;color:#9C6A17;border:1px solid #9C6A1733;margin:0.15rem 0.2rem;">{_html.escape(w)}</span>' for w in warnings)
-        issues_html += f'<div style="margin-bottom:0.4rem;"><span style="font-size:0.72rem;font-weight:700;color:#9C6A17;text-transform:uppercase;letter-spacing:0.06em;">Warnings:</span> {items}</div>'
-
-    # Reason codes
+    # Subtle reason-code reference (inline, muted — detail lives in Hygiene findings below)
     codes_html = ""
     if codes:
-        pills = "".join(
-            f'<span title="{_html.escape(REASON_CODES.get(c, c))}" style="display:inline-block;padding:0.15rem 0.4rem;border-radius:999px;font-size:0.7rem;font-weight:700;font-family:monospace;background:rgba(11,94,168,0.06);border:1px solid rgba(11,94,168,0.12);color:#004B8B;margin-right:0.25rem;margin-bottom:0.2rem;cursor:help;">{_html.escape(c)}</span>'
+        code_spans = ", ".join(
+            f'<span title="{_html.escape(REASON_CODES.get(c, c))}" style="font-family:monospace;color:#668097;cursor:help;">{_html.escape(c)}</span>'
             for c in codes[:6]
         )
-        codes_html = f'<div style="margin-bottom:0.5rem;">{pills}</div>'
+        codes_html = f'<div style="font-size:0.74rem;color:#8A9CAC;margin-bottom:0.5rem;">Codes: {code_spans}</div>'
+
+    # Inline hygiene findings (only when passed — e.g. on Scan Data step)
+    hygiene_html = ""
+    if classified_hygiene:
+        def _group(items, title, color, bg):
+            if not items:
+                return ""
+            rows = []
+            for item in items:
+                code = _html.escape(item.get("reason_code", ""))
+                col = _html.escape(item.get("column", ""))
+                finding = _html.escape(item.get("finding", ""))
+                rows.append(
+                    f'<div style="display:flex;gap:0.6rem;align-items:flex-start;padding:0.4rem 0;border-bottom:1px solid rgba(214,226,236,0.3);">'
+                    f'<span style="display:inline-block;padding:0.12rem 0.4rem;border-radius:999px;font-size:0.68rem;'
+                    f'font-weight:700;font-family:monospace;background:{bg};color:{color};border:1px solid {color}33;'
+                    f'white-space:nowrap;margin-top:0.15rem;">{code}</span>'
+                    f'<div>'
+                    f'<div style="font-size:0.84rem;font-weight:600;color:#2D3E50;">{col}</div>'
+                    f'<div style="font-size:0.78rem;color:#668097;line-height:1.4;">{finding}</div>'
+                    f'</div></div>'
+                )
+            return (
+                f'<div style="margin-bottom:0.5rem;">'
+                f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{color};margin-bottom:0.2rem;">'
+                f'{title} ({len(items)})</div>'
+                + "".join(rows) + '</div>'
+            )
+
+        blockers_items = [c for c in classified_hygiene if c["classification"] == "blocker"]
+        warnings_items = [c for c in classified_hygiene if c["classification"] == "warning"]
+        info_items = [c for c in classified_hygiene if c["classification"] == "informational"]
+
+        body = _group(blockers_items, "Blockers", "#9D2B3C", "#FFF1F3")
+        body += _group(warnings_items, "Warnings", "#9C6A17", "#FFF6E3")
+        body += _group(info_items, "Informational", "#668097", "rgba(214,226,236,0.2)")
+
+        if body:
+            hygiene_html = (
+                '<div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid rgba(214,226,236,0.5);">'
+                '<div style="font-size:0.82rem;font-weight:700;color:#2D3E50;margin-bottom:0.5rem;">Hygiene findings</div>'
+                + body + '</div>'
+            )
 
     # Decision history (compact)
     events = build_agent_timeline(
@@ -1165,8 +1279,8 @@ def render_consolidated_decision_log(
     html_out = (
         f'<div class="action-shell" style="border-left:3px solid {border};">'
         '<h4>Agent Decision Log</h4>'
-        + header + issues_html + codes_html
-        + '<details style="margin-top:0.3rem;"><summary style="font-size:0.78rem;font-weight:600;color:#004B8B;cursor:pointer;margin-bottom:0.3rem;">Decision history</summary>'
+        + header + codes_html + hygiene_html
+        + '<details style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(214,226,236,0.5);"><summary style="font-size:0.78rem;font-weight:600;color:#004B8B;cursor:pointer;margin-bottom:0.3rem;">Decision history</summary>'
         + '<div style="margin-top:0.3rem;">' + history_html + '</div></details>'
         + '</div>'
     )
@@ -1252,6 +1366,301 @@ def render_upload_status_panel(intake_confirmed: bool, profile: dict | None) -> 
         f'<div class="action-shell" style="border-left:3px solid {border};">'
         '<h4>Agent Decision Log</h4>'
         + header + history_html
+        + '</div>'
+    )
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ── Page 4: Review Package Handoff Summary ───────────────────────────────────
+
+def render_review_package_summary(
+    *,
+    request_id: str,
+    settings_reviewed: bool,
+    metadata_status: str,
+    package_id: str,
+    dataset_label: str,
+    included_fields: int,
+    sensitive_fields: int,
+    targeted_actions: int,
+    current_owner: str,
+    next_owner: str,
+    blockers_remaining: int,
+    warnings_remaining: int,
+    submitted_by: str | None = None,
+    submitted_at: str | None = None,
+) -> None:
+    """Render a formal governance handoff for Step 4 (Submit for Review).
+
+    Three-section structure:
+    A. Handoff status  — current state of the controlled handoff
+    B. Package contents — what is being handed off
+    C. Review rationale — why reviewer sign-off is required
+    """
+    import html as _html
+
+    # ── A. Handoff verdict language (product-oriented, not dashboard) ──
+    if metadata_status == "Approved":
+        verdict_label = "Reviewer sign-off complete — generation unlocked"
+        verdict_color = "#136B48"; verdict_bg = "#EDF9F3"
+        status_line = "Controlled handoff closed. Metadata package approved for synthesis."
+    elif metadata_status == "In Review":
+        verdict_label = "Analyst-confirmed package awaiting reviewer sign-off"
+        verdict_color = "#08467D"; verdict_bg = "#EBF1F7"
+        status_line = "Controlled handoff for metadata-reviewed synthetic request. Reviewer decision pending."
+    elif metadata_status == "Changes Requested":
+        verdict_label = "Reviewer requested changes — returned to analyst"
+        verdict_color = "#9C6A17"; verdict_bg = "#FFF6E3"
+        status_line = "Handoff returned. Resolve reviewer comments before resubmission."
+    elif metadata_status == "Rejected":
+        verdict_label = "Package rejected by reviewer"
+        verdict_color = "#9D2B3C"; verdict_bg = "#FFF1F3"
+        status_line = "Handoff closed without approval. Revise metadata assumptions and restart."
+    elif blockers_remaining > 0:
+        verdict_label = "Handoff blocked — resolve outstanding issues before submission"
+        verdict_color = "#9D2B3C"; verdict_bg = "#FFF1F3"
+        status_line = "Package cannot enter reviewer queue while blockers remain."
+    elif not settings_reviewed:
+        verdict_label = "Analyst review incomplete — settings not yet confirmed"
+        verdict_color = "#9C6A17"; verdict_bg = "#FFF6E3"
+        status_line = "Confirm metadata settings before transferring to reviewer."
+    else:
+        verdict_label = "Ready for controlled handoff to reviewer"
+        verdict_color = "#08467D"; verdict_bg = "#EBF1F7"
+        status_line = "Analyst-confirmed package ready for reviewer sign-off."
+
+    # Handoff trail (who, when)
+    trail_bits = []
+    if submitted_by:
+        trail_bits.append(f'Submitted by <strong style="color:#2D3E50;">{_html.escape(submitted_by)}</strong>')
+    if submitted_at:
+        trail_bits.append(f'at <strong style="color:#2D3E50;">{_html.escape(submitted_at)}</strong>')
+    trail_html = ""
+    if trail_bits:
+        trail_html = (
+            f'<div style="font-size:0.78rem;color:#668097;margin-top:0.45rem;">'
+            + " ".join(trail_bits) + '</div>'
+        )
+
+    # Ownership line (compact, inline)
+    ownership_html = (
+        f'<div style="display:flex;gap:1.25rem;flex-wrap:wrap;margin-top:0.5rem;font-size:0.8rem;">'
+        f'<span style="color:#668097;">Current owner: <strong style="color:#2D3E50;">{_html.escape(current_owner)}</strong></span>'
+        f'<span style="color:#668097;">Next owner: <strong style="color:#2D3E50;">{_html.escape(next_owner)}</strong></span>'
+        f'<span style="color:#668097;">Dataset: <strong style="color:#2D3E50;">{_html.escape(dataset_label)}</strong></span>'
+        f'</div>'
+    )
+
+    # ── B. Package contents (compact definition list) ──
+    def _content_row(label: str, value: str, tone: str = "default") -> str:
+        color = {
+            "default": "#2D3E50",
+            "muted": "#668097",
+            "danger": "#9D2B3C",
+            "warn": "#9C6A17",
+        }.get(tone, "#2D3E50")
+        return (
+            f'<div style="display:flex;justify-content:space-between;padding:0.35rem 0;'
+            f'border-bottom:1px solid rgba(214,226,236,0.4);font-size:0.84rem;">'
+            f'<span style="color:#668097;font-weight:500;">{_html.escape(label)}</span>'
+            f'<span style="color:{color};font-weight:600;">{_html.escape(value)}</span>'
+            f'</div>'
+        )
+
+    metadata_adjustments_label = (
+        f"{targeted_actions} confirmed" if targeted_actions > 0 else "None applied"
+    )
+
+    contents_rows = (
+        _content_row("Fields included", str(included_fields))
+        + _content_row("Metadata adjustments", metadata_adjustments_label,
+                       "default" if targeted_actions > 0 else "muted")
+        + _content_row("Governance-sensitive fields", str(sensitive_fields),
+                       "warn" if sensitive_fields > 0 else "muted")
+        + _content_row("Blockers remaining", str(blockers_remaining),
+                       "danger" if blockers_remaining > 0 else "default")
+        + _content_row("Warnings remaining", str(warnings_remaining),
+                       "warn" if warnings_remaining > 0 else "default")
+    )
+
+    # ── C. Review rationale — governance-driven reasons ──
+    rationale_items = []
+    if blockers_remaining > 0:
+        rationale_items.append(
+            f"{blockers_remaining} unresolved blocker(s) require analyst remediation before reviewer queue entry."
+        )
+    if sensitive_fields > 0:
+        rationale_items.append(
+            f"{sensitive_fields} governance-sensitive field(s) require reviewer confirmation of handling assumptions."
+        )
+    if targeted_actions > 0:
+        rationale_items.append(
+            f"{targeted_actions} analyst-confirmed metadata adjustment(s) require reviewer sign-off before synthesis."
+        )
+    if warnings_remaining > 0 and blockers_remaining == 0:
+        rationale_items.append(
+            f"{warnings_remaining} warning(s) documented — reviewer may accept with acknowledgement."
+        )
+    # Always-on governance policy statement
+    rationale_items.append(
+        "Governance policy: metadata-only transformation (GOV-01) may not proceed to generation without reviewer approval."
+    )
+
+    rationale_html = "".join(
+        f'<li style="margin-bottom:0.3rem;line-height:1.5;">{_html.escape(r)}</li>'
+        for r in rationale_items
+    )
+
+    # ── Compose final HTML ──
+    html_out = (
+        '<div class="action-shell" style="margin-bottom:0.85rem;">'
+        '<h4>Review handoff</h4>'
+        # A. Handoff status
+        f'<div style="padding:0.65rem 0.9rem;background:{verdict_bg};border:1px solid {verdict_color}33;'
+        f'border-radius:10px;margin-bottom:0.9rem;">'
+        f'<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{verdict_color};">Handoff status</div>'
+        f'<div style="font-size:0.95rem;font-weight:600;color:{verdict_color};margin-top:0.15rem;line-height:1.35;">{_html.escape(verdict_label)}</div>'
+        f'<div style="font-size:0.82rem;color:#2D3E50;margin-top:0.3rem;line-height:1.45;">{_html.escape(status_line)}</div>'
+        f'{trail_html}'
+        f'{ownership_html}'
+        f'</div>'
+        # B. Package contents
+        '<div style="margin-bottom:0.9rem;">'
+        '<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.4rem;">Package contents</div>'
+        + contents_rows
+        + '</div>'
+        # C. Review rationale
+        '<div style="padding:0.7rem 0.9rem;background:rgba(214,226,236,0.18);border:1px solid rgba(214,226,236,0.5);border-radius:10px;">'
+        '<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.35rem;">Review rationale</div>'
+        f'<ul style="margin:0.2rem 0 0 1.15rem;padding:0;font-size:0.84rem;color:#2D3E50;">{rationale_html}</ul>'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(html_out, unsafe_allow_html=True)
+
+
+# ── Page 5: Synthetic Package Verification Summary ───────────────────────────
+
+def render_synthetic_verification_summary(
+    *,
+    rows_generated: int,
+    fields_included: int,
+    noise_posture: str,
+    verification_complete: bool,
+    metadata_package_id: str | None = None,
+    approved_by: str | None = None,
+) -> None:
+    """Render the synthetic package release verdict for Step 5.
+
+    Three-section structure:
+    A. Primary verdict  — release recommendation, governance boundary, verification status
+    B. Supporting evidence — output volume, approved field coverage, generation profile
+    C. Safety note — internal sandbox suitability, not for clinical decision making
+    """
+    import html as _html
+
+    # ── A. Release recommendation state ──
+    if verification_complete:
+        release_label = "Approved for internal modeling sandbox"
+        release_detail = "Verification complete. Package cleared for controlled analytical use."
+        release_color = "#136B48"; release_bg = "#EDF9F3"
+        verification_status_label = "Fidelity and privacy checks completed"
+        sandbox_label = "Suitable for internal analytical workloads"
+        sandbox_color = "#136B48"; sandbox_bg = "#EDF9F3"
+    else:
+        release_label = "Release held — verification pending"
+        release_detail = "Package not yet cleared for release. Verification checks in progress."
+        release_color = "#9C6A17"; release_bg = "#FFF6E3"
+        verification_status_label = "Verification checks pending"
+        sandbox_label = "Release held pending verification"
+        sandbox_color = "#9C6A17"; sandbox_bg = "#FFF6E3"
+
+    # Provenance trail (who approved, which package)
+    trail_bits = []
+    if metadata_package_id:
+        trail_bits.append(
+            f'Generated from approved package <strong style="color:#2D3E50;">{_html.escape(metadata_package_id)}</strong>'
+        )
+    if approved_by:
+        trail_bits.append(
+            f'signed off by <strong style="color:#2D3E50;">{_html.escape(approved_by)}</strong>'
+        )
+    trail_html = ""
+    if trail_bits:
+        trail_html = (
+            f'<div style="font-size:0.78rem;color:#668097;margin-top:0.5rem;line-height:1.45;">'
+            + " ".join(trail_bits) + '.</div>'
+        )
+
+    # ── Helper: definition-list row for verdict section ──
+    def _verdict_row(label: str, value: str, value_color: str = "#2D3E50") -> str:
+        return (
+            f'<div style="display:flex;gap:1.2rem;padding:0.45rem 0;border-bottom:1px solid rgba(214,226,236,0.35);">'
+            f'<div style="flex:0 0 180px;font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:#668097;padding-top:0.12rem;">{_html.escape(label)}</div>'
+            f'<div style="flex:1;font-size:0.88rem;font-weight:600;color:{value_color};line-height:1.4;">{value}</div>'
+            f'</div>'
+        )
+
+    # Compose primary verdict section (inline, no nested panels — unified feel)
+    verdict_block = (
+        _verdict_row("Release recommendation", _html.escape(release_label), release_color)
+        + _verdict_row(
+            "Governance boundary",
+            'Metadata-only transformation preserved <span style="font-family:monospace;color:#668097;font-weight:500;font-size:0.78rem;">(GOV-01)</span>. No source records copied.',
+            "#136B48",
+        )
+        + _verdict_row("Verification status", _html.escape(verification_status_label),
+                       release_color if verification_complete else "#9C6A17")
+    )
+
+    # ── B. Supporting evidence (small, compact) ──
+    def _evidence_row(label: str, value: str) -> str:
+        return (
+            f'<div style="display:flex;justify-content:space-between;padding:0.38rem 0;'
+            f'border-bottom:1px solid rgba(214,226,236,0.4);font-size:0.84rem;">'
+            f'<span style="color:#668097;font-weight:500;">{_html.escape(label)}</span>'
+            f'<span style="color:#2D3E50;font-weight:600;">{_html.escape(value)}</span>'
+            f'</div>'
+        )
+
+    evidence_block = (
+        _evidence_row("Synthetic output volume", f"{rows_generated:,} rows")
+        + _evidence_row("Approved field coverage", f"{fields_included} fields from approved package")
+        + _evidence_row("Generation profile", f"Noise posture — {noise_posture}")
+    )
+
+    # ── C. Safety note ──
+    safety_block = (
+        f'<div style="padding:0.65rem 0.85rem;background:{sandbox_bg};border:1px solid {sandbox_color}33;'
+        f'border-radius:10px;">'
+        f'<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{sandbox_color};">Internal sandbox suitability</div>'
+        f'<div style="font-size:0.86rem;font-weight:600;color:{sandbox_color};margin-top:0.2rem;line-height:1.4;">{_html.escape(sandbox_label)}</div>'
+        f'<div style="font-size:0.8rem;color:#2D3E50;margin-top:0.3rem;line-height:1.5;">'
+        f'Use restricted to internal modeling, operational analytics, and sandbox exploration. '
+        f'<strong style="color:#9D2B3C;">Not for clinical decision making</strong> '
+        f'<span style="font-family:monospace;color:#668097;font-weight:500;font-size:0.76rem;">(REL-03)</span>.</div>'
+        f'</div>'
+    )
+
+    # ── Compose full HTML ──
+    html_out = (
+        '<div class="action-shell" style="margin-bottom:0.85rem;">'
+        '<h4>Synthetic package verification summary</h4>'
+        # A. Primary verdict
+        f'<div style="padding:0.75rem 0.95rem;background:{release_bg};border:1px solid {release_color}33;'
+        f'border-radius:10px;margin-bottom:0.9rem;">'
+        '<div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.35rem;">Release verdict</div>'
+        f'{verdict_block}'
+        f'{trail_html}'
+        f'</div>'
+        # B. Supporting evidence
+        '<div style="margin-bottom:0.9rem;">'
+        '<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#668097;margin-bottom:0.4rem;">Supporting evidence</div>'
+        + evidence_block
+        + '</div>'
+        # C. Safety note
+        + safety_block
         + '</div>'
     )
     st.markdown(html_out, unsafe_allow_html=True)

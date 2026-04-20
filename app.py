@@ -1644,9 +1644,14 @@ def inject_styles() -> None:
                 box-shadow: var(--shadow);
                 padding: 0.35rem 0.45rem 0.7rem 0.45rem;
             }
-            /* Ensure inner block container also stays white */
-            div[data-testid="stVerticalBlockBorderWrapper"] > div,
-            div[data-testid="stVerticalBlock"] {
+            /* Ensure ALL inner blocks including nested containers are transparent (no blue tint) */
+            html body div[data-testid="stVerticalBlockBorderWrapper"],
+            html body div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlock"],
+            html body div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock"] {
+                background: #ffffff !important;
+            }
+            html body div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="element-container"],
+            html body div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] {
                 background: transparent !important;
             }
 

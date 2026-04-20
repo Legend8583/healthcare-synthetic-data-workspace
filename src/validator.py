@@ -167,7 +167,7 @@ def validate_synthetic_data(
             )
             identifier_overlap += len(common)
 
-    fidelity_priority = int(controls["fidelity_priority"])
+    fidelity_priority = int(controls.get("fidelity_priority", 55))
     privacy_pressure = (fidelity_priority / 100) * 10
     privacy_score = max(
         0.0,

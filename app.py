@@ -14,11 +14,13 @@ import pandas as pd
 import streamlit as st
 
 from src.cleaner import apply_hygiene_fixes
-from src.generator import generate_synthetic_data
+from src.generator import generate_synthetic_data, generate_synthetic_advanced
 from src.hygiene_advisor import review_hygiene
 from src.metadata_builder import build_metadata, editor_frame_to_metadata, metadata_to_editor_frame
 from src.profiler import profile_dataframe
 from src.validator import validate_synthetic_data
+from src.strategies import STRATEGY_LABELS, STRATEGY_DESCRIPTIONS
+from src.dp_noise import PRIVACY_PRESETS
 from src.agent_orchestrator import (
     render_agent_orchestration_panel,
     render_agent_timeline,
@@ -51,27 +53,22 @@ STEP_CONFIG = [
     },
     {
         "title": "Scan Source Data",
-        "description": "Agent profiles fields and classifies hygiene findings.",
+        "description": "Explore the cleaned source dataset before metadata design.",
         "owner": "System",
     },
     {
-        "title": "Review & Approve Metadata",
-        "description": "Configure metadata assumptions and submit directly for reviewer sign-off.",
-        "owner": "Data Analyst → Manager / Reviewer",
+        "title": "Configure & Generate Package",
+        "description": "Configure metadata, generate synthetic preview, and submit for reviewer sign-off.",
+        "owner": "Data Analyst",
     },
     {
-        "title": "Generate Synthetic Package",
-        "description": "Synthesize from the approved metadata package. Metadata-only transformation.",
-        "owner": "System",
+        "title": "Manager Review & Approve",
+        "description": "Reviewer inspects the submitted package including synthetic preview before approval.",
+        "owner": "Manager / Reviewer",
     },
     {
         "title": "Release Synthetic Package",
-        "description": "Download the verified synthetic package for controlled distribution.",
-        "owner": "Data Analyst + Manager / Reviewer",
-    },
-    {
-        "title": "Analyze Synthetic Data",
-        "description": "Explore the released synthetic package. Source data never leaves governance.",
+        "description": "Download the approved synthetic package for controlled distribution.",
         "owner": "Data Analyst",
     },
 ]
@@ -82,8 +79,8 @@ ROLE_TO_GROUP: dict[str, str] = {
 }
 
 ROLE_VISIBLE_STEPS: dict[str, list[int]] = {
-    "Data Analyst": [0, 1, 2, 3, 4, 5],
-    "Manager / Reviewer": [2, 3, 4, 5],
+    "Data Analyst": [0, 1, 2, 3, 4],
+    "Manager / Reviewer": [3, 4],
 }
 
 ROLE_CONFIGS: dict[str, dict[str, Any]] = {
@@ -290,12 +287,18 @@ def default_generation_controls(row_count: int = 20) -> dict[str, Any]:
         "fidelity_priority": 62,
         "synthetic_rows": max(int(row_count), 20),
         "locked_columns": [],
-        "correlation_preservation": 40,
+        "correlation_preservation": 65,
         "rare_case_retention": 35,
         "noise_level": 45,
         "missingness_pattern": "Preserve source pattern",
         "outlier_strategy": "Preserve tails",
         "seed": 42,
+        # Advanced algorithm controls (new)
+        "privacy_preset": "Balanced",
+        "privacy_epsilon": 2.0,
+        "use_copula": True,
+        "copula_strength": 80,
+        "enforce_constraints": True,
     }
 
 
@@ -1046,7 +1049,7 @@ def inject_styles() -> None:
 
             .workflow-progress {
                 display: grid;
-                grid-template-columns: repeat(6, minmax(0, 1fr));
+                grid-template-columns: repeat(5, minmax(0, 1fr));
                 gap: 0.55rem;
                 margin-bottom: 0.85rem;
             }
@@ -1289,8 +1292,15 @@ def inject_styles() -> None:
             .st-key-missing_heatmap_panel,
             .st-key-field_distributions_panel,
             .st-key-metadata_summary_panel,
+            .st-key-package_summary_panel,
             .st-key-field_settings_panel,
-            .st-key-action_bar_panel {
+            .st-key-generation_strategy_panel,
+            .st-key-synthetic_preview_panel,
+            .st-key-action_bar_panel,
+            .st-key-submission_summary_panel,
+            .st-key-approval_action_panel,
+            .st-key-release_summary_panel,
+            .st-key-download_panel {
                 background: var(--surface) !important;
                 border: 1px solid var(--line) !important;
                 border-radius: 20px !important;
@@ -1326,15 +1336,19 @@ def inject_styles() -> None:
                 padding-bottom: 1.2rem !important;
             }
 
-            .st-key-metadata_summary_panel {
+            .st-key-metadata_summary_panel,
+            .st-key-package_summary_panel,
+            .st-key-submission_summary_panel,
+            .st-key-release_summary_panel {
                 padding-bottom: 1.4rem !important;
             }
 
-            .st-key-field_settings_panel {
-                padding-bottom: 1.1rem !important;
-            }
-
-            .st-key-action_bar_panel {
+            .st-key-field_settings_panel,
+            .st-key-generation_strategy_panel,
+            .st-key-synthetic_preview_panel,
+            .st-key-action_bar_panel,
+            .st-key-approval_action_panel,
+            .st-key-download_panel {
                 padding-bottom: 1.1rem !important;
             }
 
@@ -1347,8 +1361,15 @@ def inject_styles() -> None:
             .st-key-missing_heatmap_panel > div,
             .st-key-field_distributions_panel > div,
             .st-key-metadata_summary_panel > div,
+            .st-key-package_summary_panel > div,
             .st-key-field_settings_panel > div,
-            .st-key-action_bar_panel > div {
+            .st-key-generation_strategy_panel > div,
+            .st-key-synthetic_preview_panel > div,
+            .st-key-action_bar_panel > div,
+            .st-key-submission_summary_panel > div,
+            .st-key-approval_action_panel > div,
+            .st-key-release_summary_panel > div,
+            .st-key-download_panel > div {
                 background: transparent !important;
             }
 
@@ -2653,22 +2674,17 @@ STEP_PERMISSION_LABELS: dict[int, list[tuple[str, str]]] = {
     ],
     2: [
         ("edit_metadata", "Edit metadata rules and field handling"),
-        ("submit_metadata", "Submit the metadata package for review"),
-        ("approve_metadata", "Approve the metadata package"),
+        ("generate", "Generate synthetic preview"),
+        ("submit_metadata", "Submit the package for review"),
     ],
     3: [
-        ("generate", "Run synthetic generation"),
-        ("rollback", "Discard a run and go back upstream"),
+        ("approve_metadata", "Approve the submitted package"),
+        ("view_audit", "Review audit and submission history"),
     ],
     4: [
         ("request_export", "Request governed release"),
-        ("approve_release_policy", "Review release controls"),
-        ("approve_export", "Authorize final export"),
-        ("view_audit", "Review audit and approval history"),
-    ],
-    5: [
-        ("view_audit", "Review audit and analysis history"),
-        ("review_results", "Explore released synthetic output"),
+        ("download_results", "Download the approved synthetic package"),
+        ("share_results", "Share release for controlled distribution"),
     ],
 }
 
@@ -2686,10 +2702,9 @@ ROLE_PRIORITY_NOTES: dict[str, str] = {
 STEP_EXPLANATION_NOTES: dict[int, str] = {
     0: "This step captures the request, places the dataset in the workspace, and makes clear who can inspect source rows.",
     1: "This step explores the source dataset — shape, distributions, and field-level characteristics — before metadata design.",
-    2: "This step configures per-field metadata handling and submits the package directly to the reviewer for sign-off.",
-    3: "This step uses the approved package to generate synthetic output with visible distribution, structure, and noise controls.",
-    4: "This step keeps export permission-based, auditable, and controlled by release owners rather than the generation team.",
-    5: "This step explores the released synthetic dataset. Source data never leaves governance during analysis.",
+    2: "This step configures metadata, generates a synthetic preview with quality metrics, and submits the complete package for reviewer sign-off.",
+    3: "This step gives the reviewer a complete view of the submitted package including the synthetic preview and quality metrics before approval.",
+    4: "This step delivers the approved synthetic package for controlled distribution with full audit trail.",
 }
 
 
@@ -2927,12 +2942,8 @@ def current_workflow_stage(metadata: list[dict[str, Any]], controls: dict[str, A
         return 0
     if not st.session_state.hygiene_reviewed:
         return 1
-    if not st.session_state.settings_reviewed or st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
-        return 2
     if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-        return 2  # Merged review & approve page
-    if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-        return 3
+        return 2 if st.session_state.metadata_status != "In Review" else 3
     return 4
 
 
@@ -2988,22 +2999,17 @@ def build_primary_action(metadata: list[dict[str, Any]], controls: dict[str, Any
     )
     label_map = {
         0: step_zero_label,
-        1: "Review Scan Results",
-        2: (
-            "Review Submitted Request" if st.session_state.current_role == "Manager / Reviewer"
-            else "Review & Submit Metadata"
-        ),
-        3: "Generate Synthetic Data",
-        4: "Review Final Output" if st.session_state.current_role == "Manager / Reviewer" else "Download & Share Results",
-        5: "Analyze Synthetic Data",
+        1: "Explore Source Data",
+        2: "Configure & Generate",
+        3: "Review Submitted Package" if st.session_state.current_role == "Manager / Reviewer" else "Awaiting Reviewer",
+        4: "Download Synthetic Package",
     }
     note_map = {
         0: "Add request details, upload a CSV, and submit when the request is ready.",
         1: "Explore the source dataset before designing metadata.",
-        2: "Configure field handling, then submit directly to the reviewer for sign-off.",
-        3: "Run the approved request to create the synthetic dataset.",
-        4: "Review the final output, validation summary, and release-ready files.",
-        5: "Explore the released synthetic dataset. Source data never leaves governance.",
+        2: "Configure metadata, generate a synthetic preview, and submit the package for reviewer sign-off.",
+        3: "Reviewer inspects the generated preview and metadata config before approving release.",
+        4: "Download the approved synthetic package and record the release for audit.",
     }
     return {
         "step": action_step,
@@ -3543,27 +3549,44 @@ def build_operating_state_cards(metadata: list[dict[str, Any]], controls: dict[s
 
 def step_status_labels(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> list[str]:
     if not has_active_dataset():
-        return ["Upload needed", "Locked", "Locked", "Locked", "Locked", "Locked"]
+        return ["Upload needed", "Locked", "Locked", "Locked", "Locked"]
 
-    # Merged metadata status: combines "settings reviewed" + "approval" into one label
-    if not st.session_state.settings_reviewed:
-        metadata_label = "Action needed"
-    elif st.session_state.metadata_status == "In Review":
-        metadata_label = "Pending approval"
+    # Step 2 label: configure + generate state
+    if st.session_state.metadata_status == "In Review":
+        configure_label = "Submitted"
     elif st.session_state.metadata_status == "Approved":
-        metadata_label = "Approved"
+        configure_label = "Approved"
     elif st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
-        metadata_label = "Changes requested"
+        configure_label = "Changes requested"
+    elif st.session_state.synthetic_df is not None:
+        configure_label = "Preview ready"
     else:
-        metadata_label = "Ready to submit"
+        configure_label = "In progress"
+
+    # Step 3 label: manager review state
+    if st.session_state.metadata_status == "In Review":
+        manager_label = "Awaiting review"
+    elif st.session_state.metadata_status == "Approved":
+        manager_label = "Approved"
+    elif st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
+        manager_label = "Returned"
+    else:
+        manager_label = "Waiting"
+
+    # Step 4 label: release state
+    if st.session_state.results_shared_at:
+        release_label = "Released"
+    elif st.session_state.metadata_status == "Approved":
+        release_label = "Ready"
+    else:
+        release_label = "Locked"
 
     return [
         "Uploaded" if st.session_state.intake_confirmed else "Action needed",
-        "Scanned" if st.session_state.hygiene_reviewed else "Ready",
-        metadata_label,
-        "Generated" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting",
-        "Shared" if st.session_state.results_shared_at else ("Ready" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Waiting"),
-        "Available" if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls) else "Locked",
+        "Reviewed" if st.session_state.hygiene_reviewed else "Ready",
+        configure_label,
+        manager_label,
+        release_label,
     ]
 
 
@@ -3575,10 +3598,9 @@ def max_unlocked_step(metadata: list[dict[str, Any]], controls: dict[str, Any]) 
     if not st.session_state.settings_reviewed:
         return 2
     if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-        return 2  # Stay on merged review page until approved
-    if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-        return 3
-    return 5
+        # Analyst on step 2 (configure+generate+submit); manager on step 3 (review+approve)
+        return 3 if st.session_state.metadata_status == "In Review" else 2
+    return 4  # Release
 
 
 def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, Any], role: str | None = None) -> int:
@@ -3590,8 +3612,8 @@ def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, An
 
     if active_role == "Manager / Reviewer":
         if st.session_state.metadata_status == "In Review":
-            return 2  # Merged review & approve page
-        if st.session_state.synthetic_df is not None and not has_stale_generation(metadata, controls):
+            return 3  # Manager Review & Approve page
+        if st.session_state.synthetic_df is not None and st.session_state.metadata_status == "Approved":
             return 4  # Release page
         return visible_steps[0]
 
@@ -3600,13 +3622,9 @@ def default_step_for_role(metadata: list[dict[str, Any]], controls: dict[str, An
             return 0
         if not st.session_state.hygiene_reviewed:
             return 1
-        if not st.session_state.settings_reviewed or st.session_state.metadata_status in {"Changes Requested", "Rejected"}:
-            return 2
         if st.session_state.metadata_status != "Approved" or has_unsubmitted_metadata_changes(metadata):
-            return 2  # Stay on merged page until approved
-        if st.session_state.synthetic_df is None or has_stale_generation(metadata, controls):
-            return 3  # Generate page
-        return 4  # Release page
+            return 2  # Configure & Generate
+        return 4  # Release (approved)
 
     unlocked = max_unlocked_step(metadata, controls)
     for step_index in visible_steps:
@@ -4789,62 +4807,8 @@ def render_step_two() -> None:
         st.rerun()
 
 
-def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Merged metadata review + approval page.
-
-    Single page handles: analyst-side editing of per-field metadata
-    AND manager-side review/approval. No separate handoff step.
-    """
-    # Simplified header
-    step_cfg = STEP_CONFIG[2]
-    st.markdown(
-        f'''
-        <div class="section-shell" style="margin-bottom:0.9rem;">
-            <h3 style="margin:0;">{step_cfg["title"]}</h3>
-            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
-                Configure how each field should be handled, then submit directly to the reviewer for sign-off.
-            </div>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-
-    if not has_active_dataset():
-        st.info("Upload a dataset to review metadata assumptions.")
-        return [], st.session_state.controls.copy()
-
-    controls = st.session_state.controls.copy()
-    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    sync_metadata_workflow_state(metadata)
-    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    metadata_frame = build_metadata_review_frame(metadata)
-    active_package = active_metadata_package_record(metadata)
-    review_package = current_review_package_record()
-    package_summary = summarize_metadata_package(metadata)
-
-    is_locked = (
-        st.session_state.metadata_status in {"In Review", "Approved"}
-        and not has_unsubmitted_metadata_changes(metadata)
-    )
-    can_edit = has_permission("edit_metadata") and not is_locked
-    can_submit = has_permission("submit_metadata")
-    can_approve = has_permission("approve_metadata") or (st.session_state.current_role == "Manager / Reviewer")
-
-    # ─────────────────────────────────────────────────────────────
-    # A. STATUS STRIP
-    # ─────────────────────────────────────────────────────────────
-    status = st.session_state.metadata_status
-    if status == "Approved":
-        chip_color = "#136B48"; chip_bg = "#EDF9F3"; chip_label = "Approved"
-    elif status == "In Review":
-        chip_color = "#0b5ea8"; chip_bg = "#EBF1F7"; chip_label = "In review"
-    elif status == "Changes Requested":
-        chip_color = "#9C6A17"; chip_bg = "#FFF6E3"; chip_label = "Changes requested"
-    elif status == "Rejected":
-        chip_color = "#9d2b3c"; chip_bg = "#fff1f3"; chip_label = "Rejected"
-    else:
-        chip_color = "#668097"; chip_bg = "#F1F5F9"; chip_label = "Draft"
-
+def _render_status_strip_v2(step_index: int, status_label: str, status_color: str, status_bg: str) -> None:
+    """Shared status strip component."""
     active_request = st.session_state.active_request_id or "Not yet created"
     st.markdown(
         f"""
@@ -4861,121 +4825,323 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             <div style="width:1px;height:18px;background:#d6e2ec;"></div>
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
-                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">3 of {len(STEP_CONFIG)}</span>
+                <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{step_index + 1} of {len(STEP_CONFIG)}</span>
             </div>
-            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.28rem 0.7rem;background:{chip_bg};border-radius:999px;">
-                <span style="width:6px;height:6px;border-radius:50%;background:{chip_color};"></span>
-                <span style="font-size:0.8rem;color:{chip_color};font-weight:700;">{chip_label}</span>
+            <div style="margin-left:auto;display:inline-flex;align-items:center;gap:0.4rem;padding:0.28rem 0.7rem;background:{status_bg};border-radius:999px;">
+                <span style="width:6px;height:6px;border-radius:50%;background:{status_color};"></span>
+                <span style="font-size:0.8rem;color:{status_color};font-weight:700;">{status_label}</span>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ─────────────────────────────────────────────────────────────
-    # B. METADATA SUMMARY — capsule cards
-    # ─────────────────────────────────────────────────────────────
-    def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
-        return (
-            f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
-            f'border:1px solid #d6e2ec;border-radius:12px;margin-bottom:0.25rem;">'
-            f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
-            f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
-            f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
+
+def _stat_capsule_v2(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
+    return (
+        f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
+        f'border:1px solid #d6e2ec;border-radius:12px;margin-bottom:0.25rem;">'
+        f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
+        f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
+        f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
+        f'</div>'
+    )
+
+
+def _render_dual_dist_bars(original: dict, synthetic: dict, title: str) -> None:
+    """Side-by-side original vs synthetic distribution bars."""
+    all_labels = list(dict.fromkeys(list(original.keys()) + list(synthetic.keys())))
+    if not all_labels:
+        return
+    max_v = max(
+        max((original.get(lbl, 0) for lbl in all_labels), default=0),
+        max((synthetic.get(lbl, 0) for lbl in all_labels), default=0),
+        1.0,
+    )
+    st.markdown(
+        f'<div style="font-size:0.82rem;font-weight:600;color:#17324d;margin:0.5rem 0 0.35rem 0;">{title}</div>'
+        f'<div style="display:flex;gap:0.8rem;font-size:0.72rem;color:#668097;margin-bottom:0.3rem;">'
+        f'<div style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;background:#0b5ea8;border-radius:2px;"></span>Original</div>'
+        f'<div style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;background:#19CBC5;border-radius:2px;"></span>Synthetic</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    html = '<div style="display:flex;flex-direction:column;gap:0.3rem;">'
+    for label in all_labels[:10]:
+        o_val = float(original.get(label, 0.0))
+        s_val = float(synthetic.get(label, 0.0))
+        o_width = (o_val / max_v * 100)
+        s_width = (s_val / max_v * 100)
+        html += (
+            f'<div style="display:flex;align-items:center;gap:0.6rem;">'
+            f'<div style="min-width:120px;max-width:160px;font-size:0.78rem;color:#17324d;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{label}">{label}</div>'
+            f'<div style="flex:1;display:flex;flex-direction:column;gap:2px;">'
+            f'<div style="height:10px;background:#F1F5F9;border-radius:3px;overflow:hidden;"><div style="width:{o_width}%;height:100%;background:#0b5ea8;"></div></div>'
+            f'<div style="height:10px;background:#F1F5F9;border-radius:3px;overflow:hidden;"><div style="width:{s_width}%;height:100%;background:#19CBC5;"></div></div>'
+            f'</div>'
+            f'<div style="min-width:90px;font-size:0.72rem;color:#475569;text-align:right;">{o_val:.1f}% / {s_val:.1f}%</div>'
             f'</div>'
         )
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
-    included = int(st.session_state.metadata_editor_df["include"].sum())
-    total = len(st.session_state.metadata_editor_df)
-    excluded = total - included
-    restricted = int(metadata_frame["Sensitivity"].eq("Restricted").sum())
-    sensitive = int(metadata_frame["Sensitivity"].eq("Sensitive").sum())
-    targeted_actions = int(st.session_state.metadata_editor_df["control_action"].ne("Preserve").sum())
 
-    sensitive_accent = "#9d2b3c" if restricted > 0 else ("#9C6A17" if sensitive > 0 else "#0b5ea8")
-    sensitive_bg = "#fff1f3" if restricted > 0 else ("#FFF6E3" if sensitive > 0 else "#f5f9fc")
-    sensitive_detail = f"{restricted} restricted · {sensitive} sensitive" if (restricted + sensitive) > 0 else "None flagged"
+def _field_distribution(series: pd.Series, role: str) -> dict:
+    """Return distribution dict: label -> share %."""
+    if role == "numeric":
+        numeric = pd.to_numeric(series, errors="coerce").dropna()
+        if numeric.empty:
+            return {}
+        try:
+            bins = pd.cut(numeric, bins=5, duplicates="drop")
+            counts = bins.value_counts(normalize=True).sort_index().mul(100)
+            return {f"{interval.left:.1f}-{interval.right:.1f}": round(float(v), 2) for interval, v in counts.items()}
+        except Exception:
+            return {}
+    elif role == "date":
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed").dropna()
+        if parsed.empty:
+            return {}
+        try:
+            by_month = parsed.dt.to_period("M").value_counts(normalize=True).sort_index().mul(100)
+            return {str(k): round(float(v), 2) for k, v in list(by_month.items())[:10]}
+        except Exception:
+            return {}
+    else:
+        non_null = series.dropna().astype(str)
+        if non_null.empty:
+            return {}
+        counts = non_null.value_counts(normalize=True).mul(100).head(10)
+        return {str(k): round(float(v), 2) for k, v in counts.items()}
 
-    with st.container(border=True, key="metadata_summary_panel"):
+
+def _render_preview_panel(metadata, controls, read_only=False):
+    """Shared preview rendering used by both analyst (Step 3) and manager (Step 4)."""
+    if st.session_state.synthetic_df is None:
+        return
+
+    synthetic_df = st.session_state.synthetic_df
+    source_df = st.session_state.source_df
+    validation = st.session_state.validation or {}
+    summary = st.session_state.generation_summary or {}
+
+    with st.container(border=True, key="synthetic_preview_panel"):
         st.markdown(
-            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Metadata summary</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Overview of the package being submitted</div>'
-            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
-            + _stat_capsule("Included fields", f"{included}/{total}", f"{excluded} excluded from synthesis")
-            + _stat_capsule("Sensitive fields", str(restricted + sensitive), sensitive_detail, accent=sensitive_accent, bg=sensitive_bg)
-            + _stat_capsule("Targeted actions", str(targeted_actions), "Custom handling applied" if targeted_actions > 0 else "Default handling")
-            + _stat_capsule("Package status", chip_label, f"Submitted by {st.session_state.metadata_submitted_by}" if st.session_state.metadata_submitted_by else "Not yet submitted", accent=chip_color, bg=chip_bg)
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Synthetic preview &amp; quality metrics</div>'
+            f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.7rem;line-height:1.3;">{len(synthetic_df)} synthetic rows across {len(synthetic_df.columns)} fields</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Quality metric capsules
+        fidelity = validation.get("fidelity_score", 0)
+        privacy = validation.get("privacy_score", 0)
+        correlation = validation.get("correlation_score", 0)
+        overall = validation.get("overall_score", 0)
+
+        def _score_accent(score):
+            if score >= 80: return "#136B48", "#EDF9F3"
+            if score >= 60: return "#9C6A17", "#FFF6E3"
+            return "#9d2b3c", "#fff1f3"
+
+        f_c, f_bg = _score_accent(fidelity)
+        p_c, p_bg = _score_accent(privacy)
+        c_c, c_bg = _score_accent(correlation)
+        o_c, o_bg = _score_accent(overall)
+
+        st.markdown(
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.9rem;">'
+            + _stat_capsule_v2("Overall quality", f"{overall:.1f}", "Combined fidelity + privacy", accent=o_c, bg=o_bg)
+            + _stat_capsule_v2("Fidelity", f"{fidelity:.1f}", "How well distributions match", accent=f_c, bg=f_bg)
+            + _stat_capsule_v2("Privacy", f"{privacy:.1f}", f"epsilon = {summary.get('privacy_epsilon', 'n/a')}", accent=p_c, bg=p_bg)
+            + _stat_capsule_v2("Correlation", f"{correlation:.1f}", "Joint relationship preservation", accent=c_c, bg=c_bg)
             + '</div>',
             unsafe_allow_html=True,
         )
 
-    # ─────────────────────────────────────────────────────────────
-    # C. STATUS CALLOUTS (inline feedback from reviewer)
-    # ─────────────────────────────────────────────────────────────
+        # Algorithm transparency
+        strategy_log = summary.get("strategy_log", [])
+        copula_cols = summary.get("copula_columns", [])
+        constraints_list = summary.get("detected_constraints", [])
+        repairs = summary.get("constraint_repairs", [])
+
+        algo_html = '<div style="display:flex;gap:1.2rem;padding:0.7rem 0.9rem;background:#F8FAFC;border:1px solid #E5EDF5;border-radius:10px;margin-bottom:0.8rem;font-size:0.82rem;flex-wrap:wrap;">'
+        algo_html += f'<div><span style="font-weight:700;color:#0b5ea8;">Algorithm:</span> Gaussian Copula ({len(copula_cols)} fields), DP Laplace (epsilon = {summary.get("privacy_epsilon", "n/a")})</div>'
+        if constraints_list:
+            algo_html += f'<div><span style="font-weight:700;color:#0b5ea8;">Constraints detected:</span> {len(constraints_list)}</div>'
+        if repairs:
+            total_repairs = sum(r.get("rows_repaired", 0) for r in repairs)
+            algo_html += f'<div><span style="font-weight:700;color:#9C6A17;">Repairs applied:</span> {total_repairs} row(s) across {len(repairs)} rule(s)</div>'
+        algo_html += '</div>'
+        st.markdown(algo_html, unsafe_allow_html=True)
+
+        preview_tabs = st.tabs(["Sample rows", "Per-field comparison", "Constraints", "Strategy log"])
+
+        with preview_tabs[0]:
+            st.dataframe(synthetic_df.head(20), use_container_width=True, hide_index=True)
+
+        with preview_tabs[1]:
+            comparable = [m for m in metadata if m.get("include") and m["column"] in synthetic_df.columns and m["column"] in source_df.columns and m.get("data_type") != "identifier"]
+            if not comparable:
+                st.info("No comparable fields available.")
+            else:
+                picked = st.selectbox(
+                    "Select a field to compare distributions",
+                    options=[m["column"] for m in comparable],
+                    key=f"preview_field_selector_{id(metadata)}" if read_only else "preview_field_selector",
+                )
+                picked_meta = next((m for m in comparable if m["column"] == picked), None)
+                if picked_meta:
+                    role = picked_meta["data_type"]
+                    orig_dist = _field_distribution(source_df[picked], role)
+                    syn_dist = _field_distribution(synthetic_df[picked], role)
+                    _render_dual_dist_bars(orig_dist, syn_dist, f"{picked} ({role})")
+
+        with preview_tabs[2]:
+            if constraints_list:
+                st.markdown("**Auto-detected logical constraints in source data**")
+                cons_df = pd.DataFrame([
+                    {"Rule": c["rule"], "Type": c["kind"], "Confidence": f"{c['confidence']*100:.1f}%"}
+                    for c in constraints_list
+                ])
+                st.dataframe(cons_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No logical constraints detected.")
+            if repairs:
+                st.markdown("**Constraint repairs applied to synthetic output**")
+                rep_df = pd.DataFrame(repairs)
+                st.dataframe(rep_df, use_container_width=True, hide_index=True)
+
+        with preview_tabs[3]:
+            if strategy_log:
+                strat_df = pd.DataFrame(strategy_log)
+                st.dataframe(strat_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("No strategy log.")
+
+            drift_pairs = validation.get("correlation_details", {}).get("drift_pairs", [])
+            if drift_pairs:
+                st.markdown("**Top correlation drift pairs** (original vs synthetic)")
+                drift_df = pd.DataFrame(drift_pairs[:6])
+                st.dataframe(drift_df, use_container_width=True, hide_index=True)
+
+
+def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Step 3 — Configure & Generate Package (analyst)."""
+    step_cfg = STEP_CONFIG[2]
+    st.markdown(
+        f"""
+        <div class="section-shell" style="margin-bottom:0.9rem;">
+            <h3 style="margin:0;">{step_cfg["title"]}</h3>
+            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
+                Configure metadata, generate a synthetic preview, iterate on the algorithm, then submit the complete package for reviewer sign-off.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not has_active_dataset():
+        st.info("Upload a dataset to configure the synthetic package.")
+        return [], st.session_state.controls.copy()
+
+    controls = st.session_state.controls.copy()
+    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+    sync_metadata_workflow_state(metadata)
+    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+
+    active_package = active_metadata_package_record(metadata)
+    status = st.session_state.metadata_status
+
+    if status == "Approved":
+        s_color, s_bg, s_label = "#136B48", "#EDF9F3", "Approved"
+    elif status == "In Review":
+        s_color, s_bg, s_label = "#0b5ea8", "#EBF1F7", "In review"
+    elif status == "Changes Requested":
+        s_color, s_bg, s_label = "#9C6A17", "#FFF6E3", "Changes requested"
+    elif status == "Rejected":
+        s_color, s_bg, s_label = "#9d2b3c", "#fff1f3", "Rejected"
+    else:
+        s_color, s_bg, s_label = "#668097", "#F1F5F9", "Draft"
+
+    _render_status_strip_v2(2, s_label, s_color, s_bg)
+
+    # Callout for reviewer feedback
     if status == "Changes Requested" and active_package is not None:
         note = active_package.get("review_note") or "Reviewer requested changes."
         reviewer = active_package.get("reviewed_by") or "Reviewer"
         reviewed_at = active_package.get("reviewed_at") or ""
         st.markdown(
             f'<div style="padding:1rem 1.15rem;background:#FFF6E3;border:1px solid #F3DBA6;border-radius:14px;margin-bottom:0.9rem;">'
-            f'<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9C6A17;margin-bottom:0.25rem;">Changes requested</div>'
-            f'<div style="font-size:0.9rem;color:#17324d;line-height:1.5;margin-bottom:0.25rem;"><strong>{reviewer}</strong>{" at " + reviewed_at if reviewed_at else ""}</div>'
-            f'<div style="font-size:0.88rem;color:#475569;line-height:1.55;">{note}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    elif status == "Rejected" and active_package is not None:
-        note = active_package.get("review_note") or "Request rejected."
-        reviewer = active_package.get("reviewed_by") or "Reviewer"
-        reviewed_at = active_package.get("reviewed_at") or ""
-        st.markdown(
-            f'<div style="padding:1rem 1.15rem;background:#fff1f3;border:1px solid #F3C4CB;border-radius:14px;margin-bottom:0.9rem;">'
-            f'<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9d2b3c;margin-bottom:0.25rem;">Rejected</div>'
+            f'<div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9C6A17;margin-bottom:0.25rem;">Changes requested by reviewer</div>'
             f'<div style="font-size:0.9rem;color:#17324d;line-height:1.5;margin-bottom:0.25rem;"><strong>{reviewer}</strong>{" at " + reviewed_at if reviewed_at else ""}</div>'
             f'<div style="font-size:0.88rem;color:#475569;line-height:1.55;">{note}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-    # ─────────────────────────────────────────────────────────────
-    # D. FIELD SETTINGS EDITOR (the core table)
-    # ─────────────────────────────────────────────────────────────
+    metadata_frame = build_metadata_review_frame(metadata)
+    included = int(st.session_state.metadata_editor_df["include"].sum())
+    total = len(st.session_state.metadata_editor_df)
+    excluded = total - included
+    restricted = int(metadata_frame["Sensitivity"].eq("Restricted").sum())
+    sensitive = int(metadata_frame["Sensitivity"].eq("Sensitive").sum())
+
+    has_preview = st.session_state.synthetic_df is not None
+
+    # Package summary
+    with st.container(border=True, key="package_summary_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Package summary</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">Overview of what will be submitted</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule_v2("Fields included", f"{included}/{total}", f"{excluded} excluded from synthesis")
+            + _stat_capsule_v2("Sensitive fields", str(restricted + sensitive),
+                           f"{restricted} restricted, {sensitive} sensitive" if (restricted + sensitive) > 0 else "None flagged",
+                           accent=("#9d2b3c" if restricted > 0 else "#9C6A17" if sensitive > 0 else "#0b5ea8"),
+                           bg=("#fff1f3" if restricted > 0 else "#FFF6E3" if sensitive > 0 else "#f5f9fc"))
+            + _stat_capsule_v2("Output rows", str(int(controls.get("synthetic_rows", 500))), "Synthetic dataset size")
+            + _stat_capsule_v2("Preview status", "Generated" if has_preview else "Not yet generated",
+                           "Click Generate below" if not has_preview else f"{len(st.session_state.synthetic_df)} rows ready",
+                           accent=("#136B48" if has_preview else "#9C6A17"),
+                           bg=("#EDF9F3" if has_preview else "#FFF6E3"))
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+    can_edit = has_permission("edit_metadata") and status not in {"In Review", "Approved"}
+
+    # Field settings
     with st.container(border=True, key="field_settings_panel"):
         st.markdown(
             '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Field settings</div>'
-            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.6rem;line-height:1.3;">Configure how each field is handled</div>',
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.6rem;line-height:1.3;">Per-field handling &amp; generation strategy</div>',
             unsafe_allow_html=True,
         )
 
-        # Bulk profile buttons (analyst only, while draft)
         if can_edit:
             bulk_cols = st.columns(3)
-            if bulk_cols[0].button("Tighten PHI controls", use_container_width=True, help="Auto-apply stricter handling to sensitive fields"):
+            if bulk_cols[0].button("Tighten PHI controls", use_container_width=True, help="Stricter handling for sensitive fields"):
                 apply_bulk_metadata_profile("tighten_phi")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
-            if bulk_cols[1].button("Preserve analytics detail", use_container_width=True, help="Retain detail for non-sensitive fields"):
+            if bulk_cols[1].button("Preserve analytics detail", use_container_width=True):
                 apply_bulk_metadata_profile("preserve_analytics")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
-            if bulk_cols[2].button("Reset to defaults", use_container_width=True, help="Restore agent-suggested defaults"):
+            if bulk_cols[2].button("Reset to defaults", use_container_width=True):
                 apply_bulk_metadata_profile("reset_defaults")
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
                 rerun_with_persist()
-
             st.markdown('<div style="height:0.4rem;"></div>', unsafe_allow_html=True)
 
-        # The editor table — single streamlined view (not 3 tabs)
+        strategy_opts = ["auto", "empirical", "kde", "copula", "dp_laplace"]
         editor_source = st.session_state.metadata_editor_df.copy()
         editor_source["Sensitivity"] = [metadata_sensitivity(item) for item in editor_frame_to_metadata(editor_source)]
-        editor_source["Current handling"] = [metadata_handling(item) for item in editor_frame_to_metadata(editor_source)]
-        editor_source = editor_source[
-            ["column", "Sensitivity", "data_type", "control_action", "include", "Current handling", "notes"]
-        ]
-        editor_source = editor_source.sort_values(
+        editor_source["strategy"] = editor_source["strategy"].apply(lambda s: s if s in strategy_opts else "auto")
+        editor_source = editor_source[["column", "Sensitivity", "data_type", "include", "strategy", "control_action", "notes"]].sort_values(
             by=["Sensitivity", "column"],
             key=lambda series: series.map({"Restricted": 0, "Sensitive": 1, "Operational": 2}).fillna(series),
         )
@@ -4986,28 +5152,27 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 hide_index=True,
                 use_container_width=True,
                 num_rows="fixed",
-                key="metadata_editor_unified",
+                key="metadata_editor_unified_v2",
                 column_config={
                     "column": st.column_config.TextColumn("Field", disabled=True, width="medium"),
                     "Sensitivity": st.column_config.TextColumn("Sensitivity", disabled=True, width="small"),
                     "data_type": st.column_config.TextColumn("Type", disabled=True, width="small"),
-                    "control_action": st.column_config.SelectboxColumn("Action", options=ALL_CONTROL_ACTIONS, width="medium"),
                     "include": st.column_config.CheckboxColumn("Include", width="small"),
-                    "Current handling": st.column_config.TextColumn("Handling summary", disabled=True, width="large"),
+                    "strategy": st.column_config.SelectboxColumn("Strategy", options=strategy_opts, width="small",
+                        help="auto: agent picks | empirical: sample+noise | kde: kernel density | copula: multivariate | dp_laplace: diff privacy"),
+                    "control_action": st.column_config.SelectboxColumn("Action", options=ALL_CONTROL_ACTIONS, width="medium"),
                     "notes": st.column_config.TextColumn("Notes", width="medium"),
                 },
             )
-
-            # Propagate edits back to session state
             updated_frame = st.session_state.metadata_editor_df.copy()
             for _, row in edited.iterrows():
                 mask = updated_frame["column"] == row["column"]
-                if not mask.any():
-                    continue
+                if not mask.any(): continue
                 base_item = editor_frame_to_metadata(updated_frame.loc[mask].head(1))[0]
                 chosen_action = sanitize_control_action(base_item, str(row["control_action"]))
                 updated_frame.loc[mask, "control_action"] = chosen_action
                 updated_frame.loc[mask, "include"] = bool(row["include"]) and chosen_action != "Exclude"
+                updated_frame.loc[mask, "strategy"] = str(row["strategy"])
                 updated_frame.loc[mask, "notes"] = str(row["notes"])
             updated_frame = normalize_metadata_frame(updated_frame)
             if not updated_frame.equals(st.session_state.metadata_editor_df):
@@ -5015,79 +5180,157 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 st.session_state.settings_reviewed = False
                 st.session_state.settings_review_signature = None
         else:
-            # Read-only view for manager/reviewer or when locked
             st.dataframe(editor_source, use_container_width=True, hide_index=True)
-            if is_locked and can_edit:
-                st.caption("_Package is with reviewer — start a revised draft if changes are needed._")
 
-    # Refresh metadata after edits
     metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    sync_metadata_workflow_state(metadata)
-    current_signature = build_metadata_signature(metadata)
 
-    # ─────────────────────────────────────────────────────────────
-    # E. ACTION BAR (role-aware — analyst submits / manager approves)
-    # ─────────────────────────────────────────────────────────────
+    # Generation strategy
+    with st.container(border=True, key="generation_strategy_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Generation algorithm</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Privacy vs. fidelity controls</div>',
+            unsafe_allow_html=True,
+        )
+
+        if can_edit:
+            cols_a = st.columns([1, 1], gap="large")
+            with cols_a[0]:
+                preset_list = list(PRIVACY_PRESETS.keys())
+                current_preset = str(controls.get("privacy_preset", "Balanced"))
+                if current_preset not in preset_list:
+                    current_preset = "Balanced"
+                selected_preset = st.selectbox("Privacy preset", options=preset_list,
+                    index=preset_list.index(current_preset),
+                    help="Higher privacy adds more noise via Laplace mechanism.")
+                controls["privacy_preset"] = selected_preset
+                controls["privacy_epsilon"] = PRIVACY_PRESETS[selected_preset]
+                st.caption(f"Privacy budget epsilon = {PRIVACY_PRESETS[selected_preset]}  |  Lower epsilon = stronger privacy (more noise).")
+
+                controls["synthetic_rows"] = int(st.number_input("Output rows",
+                    value=int(controls.get("synthetic_rows", 500)), min_value=10, max_value=100000, step=50))
+
+            with cols_a[1]:
+                controls["use_copula"] = st.checkbox(
+                    "Fit Gaussian Copula for multivariate correlation",
+                    value=bool(controls.get("use_copula", True)),
+                    help="Preserves joint distribution across numeric fields. Essential for realistic healthcare data.",
+                )
+                if controls["use_copula"]:
+                    controls["copula_strength"] = st.slider("Copula correlation strength", 0, 100,
+                        int(controls.get("copula_strength", 80)),
+                        help="0 = independent fields; 100 = full source correlations.")
+                controls["enforce_constraints"] = st.checkbox(
+                    "Auto-enforce detected constraints",
+                    value=bool(controls.get("enforce_constraints", True)),
+                    help="Detects rules like admission <= discharge and repairs violations.",
+                )
+
+            with st.expander("Advanced parameters", expanded=False):
+                adv = st.columns(2)
+                with adv[0]:
+                    controls["correlation_preservation"] = st.slider("Correlation preservation", 0, 100,
+                        int(controls.get("correlation_preservation", 65)))
+                    controls["rare_case_retention"] = st.slider("Rare case retention", 0, 100,
+                        int(controls.get("rare_case_retention", 30)))
+                    controls["noise_level"] = st.slider("Per-field noise scale", 0, 100,
+                        int(controls.get("noise_level", 45)))
+                with adv[1]:
+                    miss_opts = ["Preserve source pattern", "Reduce missingness", "Fill gaps"]
+                    mp = controls.get("missingness_pattern", "Preserve source pattern")
+                    if mp not in miss_opts: mp = "Preserve source pattern"
+                    controls["missingness_pattern"] = st.selectbox("Missingness pattern", miss_opts, index=miss_opts.index(mp))
+                    out_opts = ["Preserve tails", "Clip extremes", "Smooth tails"]
+                    ov = controls.get("outlier_strategy", "Preserve tails")
+                    if ov not in out_opts: ov = "Preserve tails"
+                    controls["outlier_strategy"] = st.selectbox("Outlier strategy", out_opts, index=out_opts.index(ov))
+
+            st.session_state.controls = controls
+        else:
+            ro_rows = [
+                f"Privacy preset: <strong>{controls.get('privacy_preset', 'Balanced')}</strong> (epsilon = {controls.get('privacy_epsilon', 2.0)})",
+                f"Output rows: <strong>{int(controls.get('synthetic_rows', 500))}</strong>",
+                f"Gaussian Copula: <strong>{'Enabled' if controls.get('use_copula') else 'Disabled'}</strong>" + (f" (strength {controls.get('copula_strength', 80)}%)" if controls.get('use_copula') else ""),
+                f"Constraint enforcement: <strong>{'On' if controls.get('enforce_constraints', True) else 'Off'}</strong>",
+            ]
+            st.markdown('<div style="font-size:0.88rem;color:#475569;line-height:1.8;">' + '<br/>'.join(ro_rows) + '</div>',
+                        unsafe_allow_html=True)
+
+    # Generate preview button
+    if can_edit and has_permission("generate"):
+        g1, g2 = st.columns([1, 3])
+        if g1.button("Generate preview" if not has_preview else "Regenerate preview",
+                     type="primary", use_container_width=True, key="step3_gen_btn"):
+            with st.spinner("Fitting Gaussian Copula, sampling synthetic data, enforcing constraints, computing quality metrics..."):
+                synthetic_df, gen_summary = generate_synthetic_advanced(
+                    st.session_state.source_df, metadata, controls)
+                validation = validate_synthetic_data(
+                    st.session_state.source_df, synthetic_df, metadata, controls)
+                st.session_state.synthetic_df = synthetic_df
+                st.session_state.generation_summary = gen_summary
+                st.session_state.validation = validation
+                st.session_state.last_generation_signature = build_generation_signature(metadata, controls)
+                st.session_state.release_status = "Generated"
+                record_audit_event("Synthetic preview generated",
+                    f"{gen_summary['rows_generated']} rows with {len(gen_summary['copula_columns'])} copula fields, epsilon = {gen_summary['privacy_epsilon']}.",
+                    status="Completed")
+                rerun_with_persist()
+        if has_preview:
+            g2.markdown(
+                '<div style="padding:0.5rem 0.8rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:10px;font-size:0.85rem;color:#136B48;">'
+                f'Preview ready - {len(st.session_state.synthetic_df)} rows generated'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+    # Preview panel
+    if has_preview:
+        _render_preview_panel(metadata, controls, read_only=not can_edit)
+
+    # Action bar
     with st.container(border=True, key="action_bar_panel"):
-        if can_submit:
-            # ANALYST view
+        if has_permission("submit_metadata"):
             if status == "Approved":
                 st.markdown(
                     '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved</div>'
-                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package {active_package["package_id"] if active_package else ""} approved. You can now proceed to generate the synthetic package.</div>',
+                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package {active_package["package_id"] if active_package else ""} approved. Proceed to release.</div>',
                     unsafe_allow_html=True,
                 )
-                action_cols = st.columns([1, 1], gap="small")
-                if action_cols[0].button("Revise draft", use_container_width=True):
+                acts = st.columns([1, 1], gap="small")
+                if acts[0].button("Revise draft", use_container_width=True):
                     st.session_state.metadata_status = "Draft"
                     st.session_state.settings_reviewed = False
                     st.session_state.settings_review_signature = None
-                    record_audit_event("Metadata draft reopened", "A revised working draft was opened.", status="Updated")
+                    record_audit_event("Package draft reopened", "Revised draft.", status="Updated")
                     rerun_with_persist()
-                if action_cols[1].button("Continue to generation →", type="primary", use_container_width=True):
-                    st.session_state.current_step = 3
+                if acts[1].button("Continue to release", type="primary", use_container_width=True):
+                    st.session_state.current_step = 4
                     st.rerun()
-
             elif status == "In Review":
                 st.markdown(
                     '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">With reviewer</div>'
-                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package submitted to Manager / Reviewer. Awaiting sign-off.</div>',
+                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Package submitted to Manager / Reviewer. Awaiting sign-off.</div>',
                     unsafe_allow_html=True,
                 )
-                if st.button("Revise draft", use_container_width=True, help="Start a new revised draft (only if changes are needed)"):
+                if st.button("Revise draft", use_container_width=True):
                     st.session_state.metadata_status = "Draft"
                     st.session_state.settings_reviewed = False
                     st.session_state.settings_review_signature = None
-                    record_audit_event("Metadata draft reopened", "A revised working draft was opened.", status="Updated")
+                    record_audit_event("Package draft reopened", "Revised draft.", status="Updated")
                     rerun_with_persist()
-
             else:
-                # Draft, Changes Requested, Rejected
                 st.markdown(
                     '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Submit for review</div>'
-                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Mark settings reviewed, then submit the metadata package to the Manager / Reviewer for sign-off.</div>',
+                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">Once you are happy with the preview and quality metrics, submit the complete package to the Manager / Reviewer.</div>',
                     unsafe_allow_html=True,
                 )
-
-                settings_ok = st.session_state.settings_reviewed and st.session_state.settings_review_signature == current_signature
-
-                action_cols = st.columns([1, 1, 1], gap="small")
-                if action_cols[0].button(
-                    "Mark settings reviewed" if not settings_ok else "✓ Settings reviewed",
-                    use_container_width=True,
-                    disabled=settings_ok,
-                ):
+                current_signature = build_metadata_signature(metadata)
+                ab = st.columns([1, 1, 1], gap="small")
+                can_submit = has_preview and not has_stale_generation(metadata, controls)
+                if ab[0].button("Submit package for review", type="primary",
+                                use_container_width=True, disabled=not can_submit,
+                                help=None if can_submit else "Generate a preview first"):
                     st.session_state.settings_reviewed = True
                     st.session_state.settings_review_signature = current_signature
-                    record_audit_event("Data settings reviewed", "Field-level settings finalized.", status="Completed")
-                    rerun_with_persist()
-
-                if action_cols[1].button(
-                    "Submit to reviewer",
-                    type="primary",
-                    use_container_width=True,
-                    disabled=not settings_ok,
-                ):
                     st.session_state.metadata_status = "In Review"
                     st.session_state.metadata_submitted_by = st.session_state.current_role
                     st.session_state.metadata_submitted_at = format_timestamp()
@@ -5096,622 +5339,328 @@ def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                     st.session_state.metadata_review_note = None
                     st.session_state.metadata_reviewed_by = None
                     st.session_state.metadata_reviewed_at = None
-                    st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
+                    st.session_state.last_reviewed_metadata_signature = current_signature
                     submitted_record = register_metadata_submission(metadata)
-                    clear_generation_outputs()
-                    record_audit_event(
-                        "Request submitted for review",
-                        f"{submitted_record['package_id']} submitted by {st.session_state.current_role}.",
-                        status="Submitted",
-                    )
+                    record_audit_event("Package submitted for review",
+                        f"{submitted_record['package_id']} submitted with {len(st.session_state.synthetic_df)} synthetic rows.",
+                        status="Submitted")
                     rerun_with_persist()
-
-                if action_cols[2].button("← Back to Scan", use_container_width=True):
+                if ab[1].button("Back to Scan", use_container_width=True):
                     st.session_state.current_step = 1
                     st.rerun()
 
-        elif can_approve:
-            # MANAGER/REVIEWER view
-            if status in ("Draft", "Rejected"):
-                st.info("No request is waiting for review right now.")
-            elif status == "Approved":
-                st.markdown(
-                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved</div>'
-                    f'<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">You approved this request. It is now in the analyst queue for generation.</div>',
-                    unsafe_allow_html=True,
-                )
-            elif status == "In Review":
-                st.markdown(
-                    '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Awaiting your review</div>'
-                    '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.6rem;">Review the field settings above, then approve or request changes below.</div>',
-                    unsafe_allow_html=True,
-                )
+    return metadata, controls
 
-                review_note = st.text_area(
-                    "Review note (required for request changes / reject)",
-                    placeholder="Add approval context or revision guidance for the Data Analyst...",
-                    key="manager_review_note",
-                    height=90,
-                )
 
-                action_cols = st.columns([1, 1, 1], gap="small")
-                if action_cols[0].button("Approve", type="primary", use_container_width=True):
-                    st.session_state.metadata_status = "Approved"
-                    st.session_state.metadata_approved_by = st.session_state.current_role
-                    st.session_state.metadata_approved_at = format_timestamp()
-                    st.session_state.metadata_review_note = review_note.strip() or None
-                    st.session_state.metadata_reviewed_by = st.session_state.current_role
-                    st.session_state.metadata_reviewed_at = format_timestamp()
-                    st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
-                    approved_record = register_metadata_approval(metadata)
-                    if review_note.strip():
-                        approved_record["review_note"] = review_note.strip()
-                    record_audit_event(
-                        "Request approved",
-                        f"{approved_record['package_id']} approved by {st.session_state.current_role}.",
-                        status="Approved",
-                    )
-                    rerun_with_persist()
+def render_step_four(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Step 4 - Manager Review & Approve (manager sees full submitted package)."""
+    step_cfg = STEP_CONFIG[3]
+    st.markdown(
+        f"""
+        <div class="section-shell" style="margin-bottom:0.9rem;">
+            <h3 style="margin:0;">{step_cfg["title"]}</h3>
+            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
+                Inspect the submitted package — metadata configuration, generation algorithm settings, synthetic preview, and quality metrics — before approval.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-                change_disabled = not review_note.strip()
-                if action_cols[1].button("Request changes", use_container_width=True, disabled=change_disabled):
-                    feedback_record = register_metadata_feedback(metadata, "Changes Requested", review_note)
-                    st.session_state.metadata_status = "Changes Requested"
-                    st.session_state.metadata_review_note = review_note.strip()
-                    st.session_state.metadata_reviewed_by = st.session_state.current_role
-                    st.session_state.metadata_reviewed_at = format_timestamp()
-                    st.session_state.metadata_approved_by = None
-                    st.session_state.metadata_approved_at = None
-                    record_audit_event(
-                        "Request changes requested",
-                        f"{feedback_record['package_id'] if feedback_record else 'Current package'} returned with feedback.",
-                        status="Returned",
-                    )
-                    rerun_with_persist()
+    if not has_active_dataset():
+        st.info("No dataset in workspace.")
+        return metadata, controls
 
-                if action_cols[2].button("Reject", use_container_width=True, disabled=change_disabled):
-                    feedback_record = register_metadata_feedback(metadata, "Rejected", review_note)
-                    st.session_state.metadata_status = "Rejected"
-                    st.session_state.metadata_review_note = review_note.strip()
-                    st.session_state.metadata_reviewed_by = st.session_state.current_role
-                    st.session_state.metadata_reviewed_at = format_timestamp()
-                    st.session_state.metadata_approved_by = None
-                    st.session_state.metadata_approved_at = None
-                    record_audit_event(
-                        "Request rejected",
-                        f"{feedback_record['package_id'] if feedback_record else 'Current package'} rejected.",
-                        status="Rejected",
-                    )
-                    rerun_with_persist()
-            elif status == "Changes Requested":
-                st.info(f"Waiting on the Data Analyst to submit a revised draft based on your feedback.")
+    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+    sync_metadata_workflow_state(metadata)
+    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+    controls = st.session_state.controls
 
-    # ─────────────────────────────────────────────────────────────
-    # F. PACKAGE HISTORY (collapsible, for audit reference)
-    # ─────────────────────────────────────────────────────────────
-    if st.session_state.metadata_package_log:
-        with st.expander(f"Package history · {len(st.session_state.metadata_package_log)} event(s)", expanded=False):
-            st.dataframe(build_metadata_package_log_frame(), use_container_width=True, hide_index=True)
+    status = st.session_state.metadata_status
+    active_package = active_metadata_package_record(metadata)
+    review_package = current_review_package_record()
+
+    if status == "Approved":
+        s_color, s_bg, s_label = "#136B48", "#EDF9F3", "Approved"
+    elif status == "In Review":
+        s_color, s_bg, s_label = "#0b5ea8", "#EBF1F7", "Awaiting review"
+    elif status == "Changes Requested":
+        s_color, s_bg, s_label = "#9C6A17", "#FFF6E3", "Returned to analyst"
+    elif status == "Rejected":
+        s_color, s_bg, s_label = "#9d2b3c", "#fff1f3", "Rejected"
+    else:
+        s_color, s_bg, s_label = "#668097", "#F1F5F9", "Waiting"
+
+    _render_status_strip_v2(3, s_label, s_color, s_bg)
+
+    if status not in {"In Review", "Approved"}:
+        st.info("No package is currently submitted for review. Waiting for the Data Analyst to submit.")
+        if st.button("Back to list"):
+            st.session_state.current_step = 0
+            st.rerun()
+        return metadata, controls
+
+    # Submission metadata
+    metadata_frame = build_metadata_review_frame(metadata)
+    included = int(st.session_state.metadata_editor_df["include"].sum())
+    total = len(st.session_state.metadata_editor_df)
+    restricted = int(metadata_frame["Sensitivity"].eq("Restricted").sum())
+    sensitive = int(metadata_frame["Sensitivity"].eq("Sensitive").sum())
+
+    with st.container(border=True, key="submission_summary_panel"):
+        pkg_id = (review_package or active_package or {}).get("package_id", "-")
+        submitted_by = st.session_state.metadata_submitted_by or "-"
+        submitted_at = st.session_state.metadata_submitted_at or "-"
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Submitted package</div>'
+            f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">{pkg_id} - submitted by {submitted_by} at {submitted_at}</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule_v2("Fields included", f"{included}/{total}", f"{total - included} excluded")
+            + _stat_capsule_v2("Sensitive fields", str(restricted + sensitive),
+                           f"{restricted} restricted, {sensitive} sensitive" if (restricted + sensitive) > 0 else "None flagged",
+                           accent=("#9d2b3c" if restricted > 0 else "#9C6A17" if sensitive > 0 else "#0b5ea8"),
+                           bg=("#fff1f3" if restricted > 0 else "#FFF6E3" if sensitive > 0 else "#f5f9fc"))
+            + _stat_capsule_v2("Output rows", str(int(controls.get("synthetic_rows", 500))), "Synthetic size")
+            + _stat_capsule_v2("Privacy preset", str(controls.get("privacy_preset", "Balanced")),
+                           f"epsilon = {controls.get('privacy_epsilon', 2.0)}")
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Read-only metadata
+    with st.container(border=True, key="field_settings_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Field settings</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.6rem;line-height:1.3;">Per-field handling &amp; generation strategy</div>',
+            unsafe_allow_html=True,
+        )
+        read_source = st.session_state.metadata_editor_df.copy()
+        read_source["Sensitivity"] = [metadata_sensitivity(item) for item in editor_frame_to_metadata(read_source)]
+        read_source = read_source[["column", "Sensitivity", "data_type", "include", "strategy", "control_action", "notes"]]
+        st.dataframe(read_source, use_container_width=True, hide_index=True)
+
+    # Read-only generation strategy
+    with st.container(border=True, key="generation_strategy_panel"):
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Generation algorithm</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Privacy and fidelity controls used</div>',
+            unsafe_allow_html=True,
+        )
+        ro_rows = [
+            f"Privacy preset: <strong>{controls.get('privacy_preset', 'Balanced')}</strong> (epsilon = {controls.get('privacy_epsilon', 2.0)})",
+            f"Output rows: <strong>{int(controls.get('synthetic_rows', 500))}</strong>",
+            f"Gaussian Copula: <strong>{'Enabled' if controls.get('use_copula') else 'Disabled'}</strong>" + (f" (strength {controls.get('copula_strength', 80)}%)" if controls.get('use_copula') else ""),
+            f"Constraint enforcement: <strong>{'On' if controls.get('enforce_constraints', True) else 'Off'}</strong>",
+            f"Correlation preservation: <strong>{controls.get('correlation_preservation', 65)}%</strong>",
+        ]
+        st.markdown('<div style="font-size:0.88rem;color:#475569;line-height:1.8;">' + '<br/>'.join(ro_rows) + '</div>',
+                    unsafe_allow_html=True)
+
+    # Preview + metrics
+    if st.session_state.synthetic_df is not None:
+        _render_preview_panel(metadata, controls, read_only=True)
+    else:
+        st.warning("Synthetic preview was not included in the submission.")
+
+    # Approval action bar
+    with st.container(border=True, key="approval_action_panel"):
+        can_approve = has_permission("approve_metadata") or (st.session_state.current_role == "Manager / Reviewer")
+        if not can_approve:
+            st.info("Read-only view. Your role cannot approve or reject submissions.")
+            return metadata, controls
+
+        if status == "Approved":
+            st.markdown(
+                '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved</div>'
+                '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.8rem;">You approved this package. It is now ready for release download.</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Continue to release", type="primary", use_container_width=True):
+                st.session_state.current_step = 4
+                st.rerun()
+            return metadata, controls
+
+        st.markdown(
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Decision</div>'
+            '<div style="font-size:0.95rem;color:#17324d;line-height:1.5;margin-bottom:0.5rem;">Review the package above and choose an action.</div>',
+            unsafe_allow_html=True,
+        )
+        review_note = st.text_area(
+            "Review note (required for request changes / reject)",
+            placeholder="Add approval context or revision guidance for the Data Analyst...",
+            key="manager_review_note", height=90,
+        )
+
+        action_cols = st.columns([1, 1, 1], gap="small")
+        if action_cols[0].button("Approve", type="primary", use_container_width=True):
+            st.session_state.metadata_status = "Approved"
+            st.session_state.metadata_approved_by = st.session_state.current_role
+            st.session_state.metadata_approved_at = format_timestamp()
+            st.session_state.metadata_review_note = review_note.strip() or None
+            st.session_state.metadata_reviewed_by = st.session_state.current_role
+            st.session_state.metadata_reviewed_at = format_timestamp()
+            st.session_state.last_reviewed_metadata_signature = build_metadata_signature(metadata)
+            approved_record = register_metadata_approval(metadata)
+            if review_note.strip():
+                approved_record["review_note"] = review_note.strip()
+            record_audit_event("Package approved",
+                f"{approved_record['package_id']} approved by {st.session_state.current_role}.",
+                status="Approved")
+            rerun_with_persist()
+
+        change_disabled = not review_note.strip()
+        if action_cols[1].button("Request changes", use_container_width=True, disabled=change_disabled):
+            feedback_record = register_metadata_feedback(metadata, "Changes Requested", review_note)
+            st.session_state.metadata_status = "Changes Requested"
+            st.session_state.metadata_review_note = review_note.strip()
+            st.session_state.metadata_reviewed_by = st.session_state.current_role
+            st.session_state.metadata_reviewed_at = format_timestamp()
+            st.session_state.metadata_approved_by = None
+            st.session_state.metadata_approved_at = None
+            record_audit_event("Package changes requested",
+                f"{feedback_record['package_id'] if feedback_record else 'Package'} returned.",
+                status="Returned")
+            rerun_with_persist()
+
+        if action_cols[2].button("Reject", use_container_width=True, disabled=change_disabled):
+            feedback_record = register_metadata_feedback(metadata, "Rejected", review_note)
+            st.session_state.metadata_status = "Rejected"
+            st.session_state.metadata_review_note = review_note.strip()
+            st.session_state.metadata_reviewed_by = st.session_state.current_role
+            st.session_state.metadata_reviewed_at = format_timestamp()
+            st.session_state.metadata_approved_by = None
+            st.session_state.metadata_approved_at = None
+            record_audit_event("Package rejected",
+                f"{feedback_record['package_id'] if feedback_record else 'Package'} rejected.",
+                status="Rejected")
+            rerun_with_persist()
 
     return metadata, controls
 
 
 def render_step_five(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(3, "Synthesize the approved metadata package. No source records copied.")
-    render_previous_step_control(3)
-
-    if st.session_state.metadata_status != "Approved":
-        st.warning("Generation gated — awaiting reviewer sign-off on the metadata package.")
-        return
-
-    eligible_distribution_columns = [
-        item["column"] for item in metadata if item["include"] and item["data_type"] != "identifier"
-    ]
-    controls = sync_generation_preset_label(controls)
-    controls["locked_columns"] = [column for column in controls.get("locked_columns", []) if column in eligible_distribution_columns]
-    posture_label = "Balanced" if controls["fidelity_priority"] < 70 else "Higher fidelity"
-    locked_preview = ", ".join(controls.get("locked_columns", [])[:3]) or "None selected"
-    generate_clicked = False
-
-    if has_permission("generate"):
-        top_controls = st.columns(2, gap="large")
-        with top_controls[0]:
-            with st.container(border=True):
-                st.markdown("**Core generation**")
-                preset_options = list(GENERATION_PRESETS.keys()) + ["Custom"]
-                current_preset = str(controls.get("generation_preset", "Balanced"))
-                if current_preset not in preset_options:
-                    current_preset = "Custom"
-                selected_preset = st.selectbox("Generation preset", options=preset_options, index=preset_options.index(current_preset))
-                if selected_preset != current_preset:
-                    controls = apply_generation_preset(controls, selected_preset) if selected_preset != "Custom" else {**controls, "generation_preset": "Custom"}
-                controls["fidelity_priority"] = st.slider("Privacy versus fidelity", 0, 100, int(controls["fidelity_priority"]))
-                controls["synthetic_rows"] = int(st.number_input("Synthetic row count", value=int(controls["synthetic_rows"]), min_value=1, step=10))
-        with top_controls[1]:
-            with st.container(border=True):
-                st.markdown("**Distribution & structure controls**")
-                controls["locked_columns"] = st.multiselect("Lock key distributions", options=eligible_distribution_columns, default=controls["locked_columns"])
-                controls["correlation_preservation"] = st.slider("Correlation preservation", 0, 100, int(controls["correlation_preservation"]))
-                controls["rare_case_retention"] = st.slider("Rare case retention", 0, 100, int(controls["rare_case_retention"]))
-                st.caption(f"Locked columns: {locked_preview}")
-
-        bottom_controls = st.columns([1.05, 0.95], gap="large")
-        with bottom_controls[0]:
-            with st.container(border=True):
-                st.markdown("**Data quality & noise controls**")
-                controls["noise_level"] = st.slider("Noise level", 0, 100, int(controls["noise_level"]))
-                missingness_options = ["Preserve source pattern", "Reduce missingness", "Fill gaps"]
-                controls["missingness_pattern"] = st.selectbox("Missingness pattern", options=missingness_options, index=missingness_options.index(controls["missingness_pattern"]))
-                outlier_options = ["Preserve tails", "Clip extremes", "Smooth tails"]
-                controls["outlier_strategy"] = st.selectbox("Outlier strategy", options=outlier_options, index=outlier_options.index(controls["outlier_strategy"]))
-        with bottom_controls[1]:
-            with st.container(border=True):
-                st.markdown(
-                    f"""
-                    <div class="generate-action-card">
-                        <div class="control-card-kicker">Generation action</div>
-                        <div class="generate-action-title">Run the approved request</div>
-                        <div class="generate-action-text">
-                            {controls['synthetic_rows']} rows, {len(controls.get('locked_columns', []))} locked distributions,
-                            correlation {controls.get('correlation_preservation', 0)}/100, and noise {controls.get('noise_level', 0)}/100.
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                info_cols = st.columns(2)
-                info_cols[0].metric("Posture", posture_label)
-                info_cols[1].metric("Outlier strategy", controls.get("outlier_strategy", "Preserve tails"))
-                generate_clicked = st.button("Generate synthetic dataset", type="primary", use_container_width=True)
-
-        controls = sync_generation_preset_label(controls)
-        st.session_state.controls = controls
-    else:
-        render_role_restriction("This role can review the approved generation settings and the current run status.")
-        read_cols = st.columns(3, gap="large")
-        read_rows = [
-            (str(controls.get("generation_preset", "Balanced")), posture_label, "Current generation preset."),
-            ("Locked distributions", str(len(controls.get("locked_columns", []))), locked_preview),
-            ("Noise profile", str(controls.get("outlier_strategy", "Preserve tails")), f"Missingness: {controls.get('missingness_pattern', 'Preserve source pattern')}"),
-        ]
-        for col, (title, value, detail) in zip(read_cols, read_rows):
-            col.markdown(
-                f"""
-                <div class="state-card">
-                    <h4>{title}</h4>
-                    <div class="state-value">{value}</div>
-                    <div class="state-text">{detail}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    if has_permission("generate") and generate_clicked:
-        progress = st.progress(0, text="Preparing approved request...")
-        time.sleep(0.12)
-        progress.progress(30, text="Applying data settings and generation controls...")
-        time.sleep(0.12)
-        synthetic_df, generation_summary = generate_synthetic_data(st.session_state.source_df, metadata, controls)
-        progress.progress(72, text="Running fidelity and privacy checks...")
-        validation = validate_synthetic_data(st.session_state.source_df, synthetic_df, metadata, controls)
-        time.sleep(0.12)
-        progress.progress(100, text="Synthetic generation completed.")
-        st.session_state.synthetic_df = synthetic_df
-        st.session_state.generation_summary = generation_summary
-        st.session_state.validation = validation
-        st.session_state.last_generation_signature = build_generation_signature(metadata, controls)
-        st.session_state.release_status = "Generated"
-        record_audit_event(
-            "Synthetic dataset generated",
-            f"{generation_summary['rows_generated']} rows generated for approved package {st.session_state.current_metadata_package_id or 'current request'}.",
-            status="Completed",
-        )
-        rerun_with_persist()
-
-    if st.session_state.synthetic_df is None:
-        st.info("No synthetic package has been generated yet.")
-        return
-
-    if has_stale_generation(metadata, controls):
-        st.warning("Metadata assumptions changed after last run. Regenerate to refresh the synthetic package.")
-
-    summary = st.session_state.generation_summary
-    render_synthetic_verification_summary(
-        rows_generated=int(summary["rows_generated"]),
-        fields_included=int(summary["columns_generated"]),
-        noise_posture=str(summary["noise_mode"]),
-        verification_complete=st.session_state.validation is not None,
-        metadata_package_id=st.session_state.current_metadata_package_id,
-        approved_by=st.session_state.metadata_approved_by,
-    )
-
-    preview_tab, note_tab = st.tabs(["Synthetic preview", "Run settings"])
-    with preview_tab:
-        st.dataframe(st.session_state.synthetic_df.head(12), use_container_width=True, hide_index=True)
-    with note_tab:
-        st.dataframe(pd.DataFrame(build_generation_control_rows(controls)), use_container_width=True, hide_index=True)
-
-    footer_cols = st.columns([0.9, 1.1], gap="large")
-    if has_permission("rollback") and footer_cols[0].button("Return to Review & Approve Metadata", use_container_width=True):
-        st.session_state.current_step = 2
-        st.rerun()
-    if footer_cols[1].button("Continue to Release Synthetic Package", type="primary", use_container_width=True):
-        st.session_state.current_step = 4
-        st.rerun()
-
-
-def render_step_six(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(4, "Release the verified synthetic package for controlled distribution.")
-    render_previous_step_control(4)
-
-    if st.session_state.synthetic_df is None or st.session_state.validation is None:
-        st.warning("Synthetic package not yet available for release.")
-        return
-
-    if has_stale_generation(metadata, controls):
-        st.warning("Release held — metadata assumptions changed after last generation. Regenerate to refresh.")
-        return
-
-    validation_report = build_validation_report(metadata, controls)
-
-    # Compact status strip (no prominent scores)
-    release_state = effective_release_status(metadata, controls)
-    gen_by = st.session_state.current_role if has_permission("generate") else (st.session_state.metadata_submitted_by or "System")
-    shared_at = st.session_state.results_shared_at or "Not yet shared"
+    """Step 5 - Release Synthetic Package (approved download)."""
+    step_cfg = STEP_CONFIG[4]
     st.markdown(
         f"""
-        <div style="display:flex;gap:1.5rem;padding:0.75rem 1rem;background:var(--surface);border:1px solid var(--line);
-            border-radius:14px;margin-bottom:0.85rem;font-size:0.86rem;box-shadow:var(--shadow);">
-            <div><span style="color:var(--muted);font-weight:600;">Release state:</span> <strong style="color:var(--text);">{release_state}</strong></div>
-            <div><span style="color:var(--muted);font-weight:600;">Generated by:</span> <strong style="color:var(--text);">{gen_by}</strong></div>
-            <div><span style="color:var(--muted);font-weight:600;">Shared:</span> <strong style="color:var(--text);">{shared_at}</strong></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ── Agent: Release Readiness Verdicts ──
-    verdicts = build_release_readiness_verdicts(
-        validation=st.session_state.validation,
-        metadata=metadata,
-        hygiene=st.session_state.hygiene,
-        synthetic_df_columns=list(st.session_state.synthetic_df.columns),
-    )
-    render_release_readiness_verdicts(verdicts)
-
-    # Agent: Stakeholder interpretation
-    step6_readiness = compute_agent_readiness(
-        profile=st.session_state.get("profile"),
-        hygiene=st.session_state.get("hygiene"),
-        metadata=metadata, controls=controls,
-        validation=st.session_state.get("validation"),
-        intake_confirmed=True, hygiene_reviewed=True, settings_reviewed=True,
-        metadata_status=st.session_state.get("metadata_status", "Approved"),
-        synthetic_ready=True,
-        results_shared=bool(st.session_state.get("results_shared_at")),
-    )
-    stakeholder_blocks = build_stakeholder_interpretations(
-        validation=st.session_state.validation,
-        hygiene=st.session_state.hygiene,
-        metadata=metadata,
-        readiness=step6_readiness,
-    )
-    render_stakeholder_interpretations(stakeholder_blocks)
-
-    left_col, right_col = st.columns([1.08, 0.92], gap="large")
-    with left_col:
-        result_tabs = st.tabs(["Synthetic output", "Validation summary", "Audit log"])
-        with result_tabs[0]:
-            st.dataframe(st.session_state.synthetic_df.head(20), use_container_width=True, hide_index=True)
-        with result_tabs[1]:
-            validation = st.session_state.validation
-            st.markdown(
-                f"""
-                <div style="padding:0.6rem 0.85rem;background:var(--surface-soft);border:1px solid var(--line);
-                    border-radius:12px;margin-bottom:0.7rem;font-size:0.82rem;color:var(--muted);">
-                    <span style="color:var(--text);font-weight:600;">Supporting metrics:</span>
-                    fidelity {validation['fidelity_score']} · privacy {validation['privacy_score']} · overall {validation['overall_score']}.
-                    Release decisions are driven by the verdict panel above, not raw scores.
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.dataframe(build_comparison_table(st.session_state.source_df, st.session_state.synthetic_df, metadata), use_container_width=True, hide_index=True)
-            available_columns = [
-                item["column"]
-                for item in metadata
-                if item["include"] and item["column"] in st.session_state.synthetic_df.columns and item["data_type"] != "identifier"
-            ]
-            if available_columns:
-                selected_column = st.selectbox("Distribution comparison", options=available_columns, key="distribution_column")
-                comparison = build_distribution_comparison(metadata, selected_column)
-                if comparison["kind"] == "line":
-                    st.line_chart(comparison["frame"], use_container_width=True)
-                elif comparison["kind"] == "bar":
-                    st.bar_chart(comparison["frame"], use_container_width=True)
-                if not comparison["frame"].empty:
-                    st.dataframe(comparison["frame"].reset_index(), use_container_width=True, hide_index=True)
-                st.caption(comparison["note"])
-        with result_tabs[2]:
-            st.dataframe(pd.DataFrame(st.session_state.audit_events), use_container_width=True, hide_index=True)
-
-    with right_col:
-        with st.container(border=True):
-            st.markdown("**Release actions**")
-            if has_permission("download_results"):
-                st.download_button(
-                    "Download synthetic package",
-                    data=st.session_state.synthetic_df.to_csv(index=False).encode("utf-8"),
-                    file_name="synthetic_package.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                )
-                st.download_button(
-                    "Download verification report",
-                    data=validation_report.encode("utf-8"),
-                    file_name="verification_report.txt",
-                    mime="text/plain",
-                    use_container_width=True,
-                )
-                if st.button("Mark package released", type="primary", use_container_width=True, disabled=bool(st.session_state.results_shared_at)):
-                    st.session_state.results_shared_by = st.session_state.current_role
-                    st.session_state.results_shared_at = format_timestamp()
-                    record_audit_event("Package released", f"Synthetic package released by {st.session_state.current_role}.", status="Released")
-                    rerun_with_persist()
-            else:
-                st.info("The Manager / Reviewer can review the final output and validation summary here.")
-                st.download_button(
-                    "Download validation report",
-                    data=validation_report.encode("utf-8"),
-                    file_name="validation_report.txt",
-                    mime="text/plain",
-                    use_container_width=True,
-                )
-
-            if st.session_state.results_shared_at:
-                st.success(f"Shared by {st.session_state.results_shared_by} at {st.session_state.results_shared_at}.")
-
-            if active_metadata_package_record(metadata) is not None:
-                package = active_metadata_package_record(metadata)
-                st.metric("Approved package", package["package_id"])
-                st.metric("Approved by", package.get("approved_by") or "Pending")
-                st.metric("Review note", package.get("review_note") or "None")
-
-    # End-of-step transition to Step 7
-    st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
-    footer_cols = st.columns([0.35, 0.65], gap="large")
-    if has_permission("rollback") and footer_cols[0].button("Return to Generate Package", use_container_width=True):
-        st.session_state.current_step = 3
-        st.rerun()
-    if footer_cols[1].button(
-        "Continue to Analyze Synthetic Data  →",
-        type="primary",
-        use_container_width=True,
-        disabled=st.session_state.synthetic_df is None,
-    ):
-        st.session_state.current_step = 5
-        st.rerun()
-
-
-def render_step_seven(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:
-    render_section_header(5, "Analyze the released synthetic package. Source data remains inside governance.")
-    render_previous_step_control(5)
-
-    if st.session_state.synthetic_df is None or st.session_state.validation is None:
-        st.warning("Generate and verify synthetic data before analysis.")
-        return
-
-    if has_stale_generation(metadata, controls):
-        st.warning("Synthetic output is out of date. Regenerate before analyzing.")
-        return
-
-    # ── Prominent privacy boundary (core to this step, not a footnote) ──
-    st.markdown(
-        """
-        <div style="padding:0.85rem 1rem;background:#EDF9F3;border:1px solid rgba(19,107,72,0.2);
-            border-left:4px solid #136B48;border-radius:12px;margin-bottom:1.1rem;">
-            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#136B48;margin-bottom:0.25rem;">
-                Privacy boundary
-            </div>
-            <div style="font-size:0.9rem;color:#2D3E50;line-height:1.5;">
-                Only the <strong>synthetic package</strong> is available for analysis below.
-                No source records, no raw metadata, and no real patient data are exposed —
-                even when optional external chat analysis is used
-                <span style="font-family:monospace;color:#668097;font-weight:500;font-size:0.78rem;">(GOV-01)</span>.
+        <div class="section-shell" style="margin-bottom:0.9rem;">
+            <h3 style="margin:0;">{step_cfg["title"]}</h3>
+            <div style="font-size:0.92rem;color:#668097;margin-top:0.3rem;line-height:1.55;">
+                Download the approved synthetic package for controlled distribution. The release is recorded in the audit log.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    if not has_active_dataset():
+        st.info("No dataset in workspace.")
+        return
+
+    if st.session_state.metadata_status != "Approved":
+        st.warning("Release is gated - the package must be approved before download.")
+        if st.button("Back to configuration"):
+            st.session_state.current_step = 2
+            st.rerun()
+        return
+
+    if st.session_state.synthetic_df is None:
+        st.error("No synthetic data is available. Return to configuration and generate the package.")
+        if st.button("Back to configuration"):
+            st.session_state.current_step = 2
+            st.rerun()
+        return
+
+    active_package = active_metadata_package_record(metadata)
+    if st.session_state.results_shared_at:
+        s_color, s_bg, s_label = "#136B48", "#EDF9F3", "Released"
+    else:
+        s_color, s_bg, s_label = "#0b5ea8", "#EBF1F7", "Ready to release"
+    _render_status_strip_v2(4, s_label, s_color, s_bg)
 
     synthetic_df = st.session_state.synthetic_df
+    summary = st.session_state.generation_summary or {}
+    validation = st.session_state.validation or {}
 
-    # ── Mode selection as prominent side-by-side cards ──
-    if "step7_analysis_mode" not in st.session_state:
-        st.session_state.step7_analysis_mode = "Local analysis"
-    current_mode = st.session_state.step7_analysis_mode
-
-    st.markdown(
-        """
-        <div style="margin:0.25rem 0 0.6rem 0;">
-            <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#2D3E50;">Choose analysis mode</div>
-            <div style="font-size:0.82rem;color:#668097;margin-top:0.15rem;">Only synthetic output is eligible for this step.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    mode_cols = st.columns(2, gap="medium")
-
-    # Local analysis card
-    local_selected = current_mode == "Local analysis"
-    if local_selected:
-        local_border = "#004B8B"; local_bg = "#EBF1F7"; local_shadow = "0 0 0 2px rgba(0,75,139,0.18)"
-        local_badge = '<span style="display:inline-block;padding:0.12rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:700;background:#004B8B;color:#FFFFFF;letter-spacing:0.04em;">&#10003; SELECTED</span>'
-    else:
-        local_border = "#DDE5ED"; local_bg = "#FFFFFF"; local_shadow = "none"
-        local_badge = '<span style="font-size:0.7rem;color:transparent;">&nbsp;</span>'
-
-    with mode_cols[0]:
+    # Release summary
+    with st.container(border=True, key="release_summary_panel"):
         st.markdown(
-            f"""
-            <div style="padding:1rem 1.1rem;background:{local_bg};border:1.5px solid {local_border};
-                border-radius:12px;min-height:120px;box-shadow:{local_shadow};transition:all 0.15s ease;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
-                    <div style="font-size:1rem;font-weight:700;color:#2D3E50;">Local analysis</div>
-                    {local_badge}
-                </div>
-                <div style="font-size:0.84rem;color:#668097;line-height:1.5;">
-                    Review the synthetic dataset inside the governed workspace.
-                </div>
-            </div>
-            """,
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Approved package</div>'
+            f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.9rem;line-height:1.3;">{active_package["package_id"] if active_package else "-"} &middot; approved by {st.session_state.metadata_approved_by or "-"}</div>'
+            '<div style="display:flex;gap:0.7rem;flex-wrap:wrap;">'
+            + _stat_capsule_v2("Rows", str(len(synthetic_df)), "Synthetic records")
+            + _stat_capsule_v2("Columns", str(len(synthetic_df.columns)), "Fields in output")
+            + _stat_capsule_v2("Quality score", f"{validation.get('overall_score', 0):.1f}", "Combined fidelity + privacy")
+            + _stat_capsule_v2("Privacy epsilon", str(summary.get('privacy_epsilon', 2.0)),
+                           f"Preset: {summary.get('privacy_preset', 'Balanced')}")
+            + '</div>',
             unsafe_allow_html=True,
         )
-        if st.button("Use local analysis", key="step7_select_local", use_container_width=True, disabled=local_selected):
-            st.session_state.step7_analysis_mode = "Local analysis"
-            st.rerun()
 
-    # Chat analysis card
-    chat_selected = current_mode == "Chat analysis (synthetic data only)"
-    if chat_selected:
-        chat_border = "#004B8B"; chat_bg = "#EBF1F7"; chat_shadow = "0 0 0 2px rgba(0,75,139,0.18)"
-        chat_badge = '<span style="display:inline-block;padding:0.12rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:700;background:#004B8B;color:#FFFFFF;letter-spacing:0.04em;">&#10003; SELECTED</span>'
-    else:
-        chat_border = "#DDE5ED"; chat_bg = "#FFFFFF"; chat_shadow = "none"
-        chat_badge = '<span style="font-size:0.7rem;color:transparent;">&nbsp;</span>'
-
-    with mode_cols[1]:
+    # Download
+    with st.container(border=True, key="download_panel"):
         st.markdown(
-            f"""
-            <div style="padding:1rem 1.1rem;background:{chat_bg};border:1.5px solid {chat_border};
-                border-radius:12px;min-height:120px;box-shadow:{chat_shadow};transition:all 0.15s ease;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;">
-                    <div style="font-size:1rem;font-weight:700;color:#2D3E50;">Chat analysis
-                        <span style="font-size:0.7rem;font-weight:600;color:#9C6A17;margin-left:0.4rem;">synthetic output only</span>
-                    </div>
-                    {chat_badge}
-                </div>
-                <div style="font-size:0.84rem;color:#668097;line-height:1.5;">
-                    Use optional external chat analysis on synthetic output only. No source records or raw metadata are sent externally.
-                </div>
-            </div>
-            """,
+            '<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;margin-bottom:0.3rem;">Download</div>'
+            '<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.8rem;line-height:1.3;">Export the synthetic package</div>',
             unsafe_allow_html=True,
         )
-        if st.button("Use chat analysis", key="step7_select_chat", use_container_width=True, disabled=chat_selected):
-            st.session_state.step7_analysis_mode = "Chat analysis (synthetic data only)"
-            st.rerun()
 
-    st.markdown('<div style="height:0.6rem;"></div>', unsafe_allow_html=True)
+        csv_bytes = synthetic_df.to_csv(index=False).encode("utf-8")
+        import json as _json
+        metadata_json = _json.dumps({
+            "package_id": active_package["package_id"] if active_package else "",
+            "approved_by": st.session_state.metadata_approved_by,
+            "approved_at": st.session_state.metadata_approved_at,
+            "submitted_by": st.session_state.metadata_submitted_by,
+            "submitted_at": st.session_state.metadata_submitted_at,
+            "generation_summary": {k: v for k, v in summary.items() if not isinstance(v, list) or len(v) < 50},
+            "quality_metrics": {
+                "overall_score": validation.get("overall_score", 0),
+                "fidelity_score": validation.get("fidelity_score", 0),
+                "privacy_score": validation.get("privacy_score", 0),
+                "correlation_score": validation.get("correlation_score", 0),
+            },
+            "metadata": metadata,
+        }, indent=2, default=str).encode("utf-8")
 
-    # ── Render selected mode ──
-    analysis_mode = st.session_state.step7_analysis_mode
+        dl_cols = st.columns(2, gap="small")
+        dl_cols[0].download_button(
+            "Download synthetic CSV",
+            data=csv_bytes,
+            file_name=f"synthetic_{active_package['package_id'] if active_package else 'package'}.csv",
+            mime="text/csv",
+            type="primary",
+            use_container_width=True,
+        )
+        dl_cols[1].download_button(
+            "Download package metadata (JSON)",
+            data=metadata_json,
+            file_name=f"metadata_{active_package['package_id'] if active_package else 'package'}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
 
-    if analysis_mode == "Local analysis":
-        numeric_cols = synthetic_df.select_dtypes(include="number").columns.tolist()
-        missing_cells = int(synthetic_df.isna().sum().sum())
-
-        # Styled capsule cards (matching governed workflow panels)
-        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#08467D", bg: str = "#EBF1F7") -> str:
-            return (
-                f'<div style="flex:1;min-width:0;padding:0.75rem 0.95rem;background:{bg};'
-                f'border:1px solid {accent}22;border-radius:10px;">'
-                f'<div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:{accent};margin-bottom:0.2rem;">{kicker}</div>'
-                f'<div style="font-size:1.25rem;font-weight:700;color:#2D3E50;line-height:1.15;">{value}</div>'
-                f'<div style="font-size:0.74rem;color:#668097;margin-top:0.15rem;line-height:1.35;">{detail}</div>'
-                f'</div>'
+        st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
+        if not st.session_state.results_shared_at:
+            if st.button("Record as released", use_container_width=True):
+                st.session_state.results_shared_at = format_timestamp()
+                st.session_state.results_shared_by = st.session_state.current_role
+                st.session_state.release_status = "Released"
+                record_audit_event("Package released",
+                    f"{active_package['package_id'] if active_package else 'Package'} released by {st.session_state.current_role}.",
+                    status="Released")
+                rerun_with_persist()
+        else:
+            st.markdown(
+                f'<div style="padding:0.6rem 0.9rem;background:#EDF9F3;border:1px solid #B8E3CC;border-radius:10px;font-size:0.85rem;color:#136B48;">Released by {st.session_state.results_shared_by} at {st.session_state.results_shared_at}</div>',
+                unsafe_allow_html=True,
             )
 
-        stats_html = (
-            '<div class="action-shell" style="margin-bottom:0.85rem;">'
-            '<h4>Synthetic package — local analysis</h4>'
-            '<div style="display:flex;gap:0.65rem;flex-wrap:wrap;">'
-            + _stat_capsule("Records", f"{len(synthetic_df):,}", "Synthetic rows in package")
-            + _stat_capsule("Fields", str(len(synthetic_df.columns)), "Columns included")
-            + _stat_capsule("Numeric fields", str(len(numeric_cols)), "Eligible for distribution view")
-            + _stat_capsule(
-                "Missing cells",
-                f"{missing_cells:,}",
-                "Gaps retained from metadata",
-                accent=("#136B48" if missing_cells == 0 else "#9C6A17"),
-                bg=("#EDF9F3" if missing_cells == 0 else "#FFF6E3"),
-            )
-            + '</div></div>'
-        )
-        st.markdown(stats_html, unsafe_allow_html=True)
-
-        preview_tab, stats_tab, dist_tab = st.tabs(["Data preview", "Descriptive statistics", "Distribution"])
-        with preview_tab:
-            st.dataframe(synthetic_df.head(20), use_container_width=True, hide_index=True)
-        with stats_tab:
-            if numeric_cols:
-                st.dataframe(synthetic_df[numeric_cols].describe().round(2), use_container_width=True)
-            else:
-                st.info("No numeric columns in the synthetic output.")
-        with dist_tab:
-            if numeric_cols:
-                selected_col = st.selectbox("Select field", numeric_cols, key="step7_dist_col")
-                st.bar_chart(synthetic_df[selected_col].dropna().value_counts().head(20).sort_index())
-            cat_cols = [c for c in synthetic_df.columns if c not in numeric_cols and synthetic_df[c].nunique() <= 20]
-            if cat_cols:
-                selected_cat = st.selectbox("Categorical field", cat_cols, key="step7_cat_col")
-                st.bar_chart(synthetic_df[selected_cat].fillna("Missing").value_counts().head(15))
-
-    else:
-        st.markdown("**Synthetic package — chat analysis**")
-        st.markdown(
-            '<div style="padding:0.6rem 0.85rem;background:#FFF6E3;border:1px solid rgba(138,97,22,0.18);'
-            'border-radius:10px;margin-bottom:0.8rem;font-size:0.83rem;color:#9C6A17;">'
-            'Optional external call. Only aggregate synthetic statistics are transmitted — '
-            'no source records, no raw metadata, no real patient data.</div>',
-            unsafe_allow_html=True,
-        )
-
-        from src.chat_assistant import build_chat_context, generate_chat_reply, generate_demo_chat_reply
-        if "step7_chat" not in st.session_state:
-            st.session_state.step7_chat = []
-
-        synth_context = (
-            f"Synthetic dataset: {len(synthetic_df)} rows, {len(synthetic_df.columns)} columns.\n"
-            f"Columns: {', '.join(synthetic_df.columns[:15])}\n"
-        )
-        for col in synthetic_df.select_dtypes(include="number").columns[:6]:
-            synth_context += f"{col}: mean={synthetic_df[col].mean():.1f}, std={synthetic_df[col].std():.1f}, min={synthetic_df[col].min():.1f}, max={synthetic_df[col].max():.1f}\n"
-        for col in synthetic_df.select_dtypes(exclude="number").columns[:4]:
-            top = synthetic_df[col].value_counts().head(3)
-            synth_context += f"{col}: {', '.join(f'{k} ({v})' for k, v in top.items())}\n"
-
-        for msg in st.session_state.step7_chat:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
-
-        if prompt := st.chat_input("Ask about the synthetic package..."):
-            st.session_state.step7_chat.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.write(prompt)
-
-            import os
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-            if api_key:
-                reply = generate_chat_reply(
-                    api_key=api_key,
-                    user_message=prompt,
-                    chat_history=st.session_state.step7_chat,
-                    context=f"SYNTHETIC DATA ANALYSIS MODE. Only synthetic data is being analyzed.\n{synth_context}",
-                )
-            else:
-                reply = generate_demo_chat_reply(
-                    prompt,
-                    st.session_state.get("profile", {}),
-                    st.session_state.get("hygiene", {}),
-                    st.session_state.get("controls", {}),
-                    st.session_state.get("validation"),
-                )
-
-            st.session_state.step7_chat.append({"role": "assistant", "content": reply})
-            with st.chat_message("assistant"):
-                st.write(reply)
+    # Back button
+    nav = st.columns([1, 1], gap="small")
+    if nav[0].button("Back to configuration", use_container_width=True):
+        st.session_state.current_step = 2
+        st.rerun()
 
 
 def main() -> None:
@@ -5742,11 +5691,8 @@ def main() -> None:
     if current_step == 0:
         # Step 0: Agent Decision Log is rendered INSIDE render_step_one at the proper position
         pass
-    elif current_step == 1:
-        # Step 1 (Scan Data): No Agent Decision Log — pure data exploration
-        pass
-    elif current_step == 2:
-        # Step 2 (Review Metadata): No Agent Decision Log — clean review & approve flow
+    elif current_step in (1, 2, 3, 4):
+        # Steps 1-4: Clean focused pages — no top-level Agent Decision Log
         pass
     else:
         # Steps 1+: full consolidated decision log with readiness engine
@@ -5790,11 +5736,9 @@ def main() -> None:
     elif current_step == 2:
         metadata, controls = render_step_three()
     elif current_step == 3:
-        render_step_five(metadata, controls)
+        metadata, controls = render_step_four(metadata, controls)
     elif current_step == 4:
-        render_step_six(metadata, controls)
-    elif current_step == 5:
-        render_step_seven(metadata, controls)
+        render_step_five(metadata, controls)
 
     persist_shared_workspace_state()
 

@@ -4532,14 +4532,17 @@ def render_step_two() -> None:
 
         prev_intake = st.session_state.get("intake_confirmed", False)
         prev_reviewed = st.session_state.get("hygiene_reviewed", False)
+        prev_step = st.session_state.get("current_step", 1)
         prev_actions = list(st.session_state.get("last_cleaning_actions") or [])
 
         cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, targeted)
         base_label = st.session_state.source_label.split(" * remediated")[0]
         set_source_dataframe(cleaned_df, f"{base_label} * remediated")
 
+        # Restore state that set_source_dataframe reset
         st.session_state.intake_confirmed = prev_intake or True
         st.session_state.hygiene_reviewed = prev_reviewed  # don\'t auto-confirm review
+        st.session_state.current_step = prev_step  # keep user on Step 2
         st.session_state.last_cleaning_actions = prev_actions + list(actions)
 
         record_audit_event(

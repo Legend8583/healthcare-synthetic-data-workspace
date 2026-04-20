@@ -3538,70 +3538,162 @@ def render_stakeholder_group_overview() -> None:
 
 def render_login_screen() -> None:
     logo_uri = load_logo_data_uri()
-    stakeholder_html = build_stakeholder_group_overview_html()
 
-    # Minimal CSS — target widget-level selectors (no st.form dependency)
+    # Hide Streamlit's default top padding on the login screen to let the split layout fill the viewport
     st.markdown(
         """
         <style>
-            /* Input fields */
-            [data-baseweb="input"] {
+            /* Login-specific resets */
+            .login-page-wrap { margin: -5rem -1rem 0 -1rem; }
+            @media (max-width: 1100px) { .login-page-wrap { margin: -5rem 0 0 0; } }
+
+            /* Right-side form input fields */
+            .login-form-area [data-baseweb="input"] {
                 border-radius: 10px !important;
+                border: 1px solid #E2E8F0 !important;
                 min-height: 48px !important;
                 box-sizing: border-box !important;
+                transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
             }
-            [data-baseweb="input"] input,
-            [data-baseweb="base-input"] input {
-                padding: 0.75rem 0.9rem !important;
+            .login-form-area [data-baseweb="input"]:focus-within {
+                border-color: #0B5EA8 !important;
+                box-shadow: 0 0 0 3px rgba(11,94,168,0.12) !important;
+            }
+            .login-form-area [data-baseweb="input"] input,
+            .login-form-area [data-baseweb="base-input"] input {
+                padding: 0.7rem 0.9rem !important;
                 font-size: 0.96rem !important;
                 line-height: 1.5 !important;
-                box-sizing: border-box !important;
-                color: var(--text) !important;
-            }
-            /* Selectbox — simple minimal styling, let Streamlit handle rendering */
-            .stSelectbox [data-baseweb="select"] > div {
-                min-height: 48px !important;
-                border-radius: 10px !important;
-            }
-            .stSelectbox label p,
-            .stSelectbox label {
-                font-size: 0.9rem !important;
-                font-weight: 500 !important;
                 color: #0F172A !important;
-                margin-bottom: 0.3rem !important;
+                background: transparent !important;
             }
-            /* Labels for text inputs */
-            .stTextInput label p,
-            .stTextInput label {
-                font-size: 0.9rem !important;
+            /* Labels */
+            .login-form-area .stTextInput label p,
+            .login-form-area .stTextInput label {
+                font-size: 0.88rem !important;
                 font-weight: 500 !important;
-                color: #0F172A !important;
-                margin-bottom: 0.3rem !important;
+                color: #334155 !important;
+                margin-bottom: 0.35rem !important;
             }
-            /* Field spacing */
-            .stTextInput, .stSelectbox {
+            .login-form-area .stTextInput {
                 margin-bottom: 1rem !important;
+            }
+            /* Primary button full-width */
+            .login-form-area .stButton > button[kind="primary"] {
+                background: #0B5EA8 !important;
+                border: 1px solid #0B5EA8 !important;
+                border-radius: 10px !important;
+                padding: 0.7rem 1rem !important;
+                font-size: 0.96rem !important;
+                font-weight: 600 !important;
+                min-height: 48px !important;
+                box-shadow: 0 1px 2px rgba(11,94,168,0.2) !important;
+                transition: all 0.15s ease !important;
+            }
+            .login-form-area .stButton > button[kind="primary"]:hover {
+                background: #084A86 !important;
+                border-color: #084A86 !important;
+            }
+            /* Secondary (quick demo) buttons */
+            .login-form-area .stButton > button[kind="secondary"],
+            .login-form-area .stButton > button:not([kind="primary"]) {
+                background: #FFFFFF !important;
+                border: 1px solid #E2E8F0 !important;
+                color: #334155 !important;
+                border-radius: 10px !important;
+                padding: 0.6rem 1rem !important;
+                font-size: 0.9rem !important;
+                font-weight: 500 !important;
+                min-height: 44px !important;
+                transition: all 0.15s ease !important;
+            }
+            .login-form-area .stButton > button:not([kind="primary"]):hover {
+                border-color: #CBD5E1 !important;
+                background: #F8FAFC !important;
             }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    intro_col, form_col = st.columns([1.08, 0.92], gap="large")
-    with intro_col:
+    # Open full-viewport split container
+    st.markdown('<div class="login-page-wrap">', unsafe_allow_html=True)
+
+    left_col, right_col = st.columns([1, 1], gap="small")
+
+    # ── LEFT: Brand panel (dark gradient, white text) ──
+    with left_col:
+        logo_html = (
+            f'<img src="{logo_uri}" alt="Southlake Health" '
+            f'style="width:220px;max-width:70%;height:auto;margin-bottom:2rem;filter:brightness(0) invert(1);opacity:0.95;" />'
+            if logo_uri else ''
+        )
         st.markdown(
             f"""
-            <div class="login-brand-card">
-                <div class="environment-tag">Southlake Health — Agentic Synthetic Data Workspace</div>
-                <div class="login-brand-lockup">
-                    {'<img src="' + logo_uri + '" class="login-logo" alt="Southlake Health logo" />' if logo_uri else ''}
-                    <div class="login-kicker">Authorized access only</div>
-                    <h1 class="login-title">{APP_TITLE}</h1>
-                    <div class="login-subtitle">Agentic synthetic data creation with governed review, metadata transparency, and controlled release for hospital teams.</div>
-                    <div class="trust-badge-row">
-                        <div class="trust-badge">Role-Based Access</div>
-                        <div class="trust-badge">Audit Logging</div>
-                        <div class="trust-badge">Controlled Release</div>
+            <div style="
+                background: linear-gradient(140deg, #0B3A6B 0%, #08467D 40%, #0B5EA8 100%);
+                min-height: 100vh;
+                padding: 4rem 3.5rem;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                color: #FFFFFF;
+                position: relative;
+                overflow: hidden;
+            ">
+                <div style="position:absolute;top:-200px;right:-200px;width:500px;height:500px;
+                    background:radial-gradient(circle,rgba(25,203,197,0.12) 0%,transparent 70%);border-radius:50%;"></div>
+                <div style="position:absolute;bottom:-150px;left:-150px;width:400px;height:400px;
+                    background:radial-gradient(circle,rgba(255,255,255,0.05) 0%,transparent 70%);border-radius:50%;"></div>
+
+                <div style="position:relative;z-index:1;">
+                    {logo_html}
+                    <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;
+                        color:rgba(255,255,255,0.65);margin-bottom:0.9rem;">
+                        Agentic Synthetic Data Workspace
+                    </div>
+                    <h1 style="font-size:2.4rem;font-weight:600;line-height:1.15;letter-spacing:-0.015em;
+                        margin:0 0 1.1rem 0;color:#FFFFFF;max-width:460px;">
+                        Governed synthetic data for hospital teams.
+                    </h1>
+                    <p style="font-size:1rem;line-height:1.6;color:rgba(255,255,255,0.75);max-width:440px;margin:0;">
+                        Create synthetic healthcare datasets with metadata transparency,
+                        reviewer sign-off, and controlled release — without moving source data.
+                    </p>
+                </div>
+
+                <div style="position:relative;z-index:1;">
+                    <div style="display:grid;grid-template-columns:1fr;gap:0.85rem;max-width:460px;">
+                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
+                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
+                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
+                            <div>
+                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Role-based access</div>
+                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
+                                    Data Analyst uploads. Manager signs off. Auditable throughout.
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
+                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
+                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
+                            <div>
+                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Metadata-only transformation</div>
+                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
+                                    Source records never leave the governed boundary.
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
+                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
+                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
+                            <div>
+                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Controlled release</div>
+                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
+                                    Verified synthetic packages released for internal modeling only.
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3609,84 +3701,120 @@ def render_login_screen() -> None:
             unsafe_allow_html=True,
         )
 
-    with form_col:
-        # Open styled wrapper (plain div, no Streamlit container)
+    # ── RIGHT: Form area ──
+    with right_col:
         st.markdown(
-            """
-            <div style="background:var(--surface);border:1px solid var(--line);border-radius:24px;
-                padding:1.8rem 1.8rem 1.6rem 1.8rem;box-shadow:var(--shadow);">
-                <div class="login-card-header">
-                    <div class="login-card-title">Sign in</div>
-                    <div class="login-card-subtitle">Use your hospital workspace credentials to access governed synthetic data requests.</div>
+            '''
+            <div class="login-form-area" style="
+                min-height: 100vh;
+                padding: 4rem 3.5rem;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                background: #FFFFFF;
+                max-width: 460px;
+                margin: 0 auto;
+            ">
+                <div style="margin-bottom:1.8rem;">
+                    <h2 style="font-size:1.9rem;font-weight:600;color:#0F172A;letter-spacing:-0.015em;margin:0 0 0.4rem 0;line-height:1.2;">
+                        Sign in
+                    </h2>
+                    <div style="font-size:0.94rem;color:#64748B;line-height:1.5;">
+                        Use your hospital workspace credentials to continue.
+                    </div>
                 </div>
-            """,
+            ''',
             unsafe_allow_html=True,
         )
 
-        # Direct widgets (no st.form — gives better input rendering on Streamlit)
-        work_email = st.text_input(
-            "Work Email",
-            placeholder="name@southlake.ca",
-            key="login_email_input",
-        )
-        password = st.text_input(
-            "Password",
-            type="password",
-            key="login_password_input",
-        )
-        role = st.selectbox(
-            "Access Profile",
-            options=list(ROLE_CONFIGS.keys()),
-            format_func=role_with_group,
-            key="login_role_select",
-        )
+        # Constrain widgets to the form width
+        form_cols = st.columns([0.05, 0.9, 0.05])
+        with form_cols[1]:
+            work_email = st.text_input(
+                "Work email",
+                placeholder="name@southlake.ca",
+                key="login_email_input",
+                label_visibility="visible",
+            )
+            password = st.text_input(
+                "Password",
+                type="password",
+                key="login_password_input",
+                label_visibility="visible",
+            )
 
-        submitted = st.button("Sign In", type="primary", use_container_width=True, key="login_submit_btn")
+            # Default role (Data Analyst) — no dropdown on login.
+            # User picks role via the quick-access buttons below, or role is auto-determined.
+            default_role = "Data Analyst"
 
-        if submitted:
-            email_value = work_email.strip().lower()
-            email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
-            if not email_value:
-                st.error("Enter your work email to continue.")
-            elif not email_valid:
-                st.error("Enter a valid work email address.")
-            elif password != ROLE_CONFIGS[role]["password"]:
-                st.error("Password did not match the selected access profile.")
-            else:
-                st.session_state.authenticated = True
-                st.session_state.current_role = role
-                st.session_state.current_user_email = email_value
-                record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
-                ensure_dataset_loaded()
-                metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-                controls = st.session_state.controls
-                st.session_state.current_step = default_step_for_role(metadata, controls, role)
-                st.rerun()
+            submitted = st.button(
+                "Continue",
+                type="primary",
+                use_container_width=True,
+                key="login_submit_btn",
+            )
 
-        st.markdown(
-            """
-            <div class="login-links">
-                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
-                <a href="mailto:accessrequests@southlake.ca?subject=Healthcare%20Synthetic%20Data%20Workspace%20Access">Request access</a>
-            </div>
-            <div class="login-divider"></div>
-            <div class="security-notice">
-                <strong>Security notice</strong>
-                Authorized users only. Access is role-based and activity may be monitored and logged for security and compliance purposes.
-            </div>
-            <div class="login-helper">Demo environment credential: <code>test</code></div>
-            """,
-            unsafe_allow_html=True,
-        )
+            if submitted:
+                email_value = work_email.strip().lower()
+                email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
+                role = default_role
+                if not email_value:
+                    st.error("Enter your work email to continue.")
+                elif not email_valid:
+                    st.error("Enter a valid work email address.")
+                elif password != ROLE_CONFIGS[role]["password"]:
+                    st.error("Password did not match your access profile.")
+                else:
+                    st.session_state.authenticated = True
+                    st.session_state.current_role = role
+                    st.session_state.current_user_email = email_value
+                    record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
+                    ensure_dataset_loaded()
+                    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+                    controls = st.session_state.controls
+                    st.session_state.current_step = default_step_for_role(metadata, controls, role)
+                    st.rerun()
 
-        quick_cols = st.columns(2)
-        if quick_cols[0].button("Enter as Data Analyst", use_container_width=True):
-            quick_sign_in("Data Analyst")
-        if quick_cols[1].button("Enter as Manager / Reviewer", use_container_width=True):
-            quick_sign_in("Manager / Reviewer")
+            # Divider
+            st.markdown(
+                '''
+                <div style="display:flex;align-items:center;gap:0.8rem;margin:1.5rem 0 1rem 0;">
+                    <div style="flex:1;height:1px;background:#E2E8F0;"></div>
+                    <div style="font-size:0.78rem;color:#94A3B8;font-weight:500;">or continue as demo</div>
+                    <div style="flex:1;height:1px;background:#E2E8F0;"></div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
 
-        # Close styled wrapper
-        st.markdown("</div>", unsafe_allow_html=True)
+            if st.button("Data Analyst", use_container_width=True, key="login_demo_analyst"):
+                quick_sign_in("Data Analyst")
+            if st.button("Manager / Reviewer", use_container_width=True, key="login_demo_manager"):
+                quick_sign_in("Manager / Reviewer")
+
+            # Footer links
+            st.markdown(
+                '''
+                <div style="margin-top:2rem;padding-top:1.3rem;border-top:1px solid #F1F5F9;">
+                    <div style="display:flex;gap:1.5rem;font-size:0.84rem;margin-bottom:0.8rem;">
+                        <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request"
+                            style="color:#0B5EA8;text-decoration:none;font-weight:500;">Forgot password?</a>
+                        <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access"
+                            style="color:#0B5EA8;text-decoration:none;font-weight:500;">Request access</a>
+                    </div>
+                    <div style="font-size:0.78rem;color:#94A3B8;line-height:1.55;">
+                        Demo credential: <code style="background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.74rem;color:#475569;">test</code>
+                        &middot; Authorized users only. Activity is logged for compliance.
+                    </div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Close full-viewport split container
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_sidebar(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:

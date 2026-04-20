@@ -3558,39 +3558,17 @@ def render_login_screen() -> None:
                 box-sizing: border-box !important;
                 color: var(--text) !important;
             }
-            /* Radio (Access Profile) — clean card-list style */
-            .stRadio > label p,
-            .stRadio > label {
+            /* Selectbox — simple minimal styling, let Streamlit handle rendering */
+            .stSelectbox [data-baseweb="select"] > div {
+                min-height: 48px !important;
+                border-radius: 10px !important;
+            }
+            .stSelectbox label p,
+            .stSelectbox label {
                 font-size: 0.9rem !important;
                 font-weight: 500 !important;
                 color: #0F172A !important;
-                margin-bottom: 0.5rem !important;
-            }
-            .stRadio [role="radiogroup"] {
-                gap: 0.5rem !important;
-            }
-            .stRadio [role="radiogroup"] label {
-                padding: 0.65rem 0.85rem !important;
-                background: #FFFFFF !important;
-                border: 1px solid var(--line) !important;
-                border-radius: 10px !important;
-                transition: all 0.15s ease !important;
-                cursor: pointer !important;
-            }
-            .stRadio [role="radiogroup"] label:hover {
-                border-color: rgba(11,94,168,0.35) !important;
-                background: rgba(11,94,168,0.02) !important;
-            }
-            .stRadio [role="radiogroup"] label:has(input:checked) {
-                border-color: #0B5EA8 !important;
-                background: rgba(11,94,168,0.06) !important;
-                box-shadow: 0 0 0 1px rgba(11,94,168,0.15) !important;
-            }
-            .stRadio [role="radiogroup"] label p,
-            .stRadio [role="radiogroup"] label div {
-                color: #0F172A !important;
-                font-size: 0.92rem !important;
-                font-weight: 500 !important;
+                margin-bottom: 0.3rem !important;
             }
             /* Labels for text inputs */
             .stTextInput label p,
@@ -3601,7 +3579,7 @@ def render_login_screen() -> None:
                 margin-bottom: 0.3rem !important;
             }
             /* Field spacing */
-            .stTextInput, .stRadio {
+            .stTextInput, .stSelectbox {
                 margin-bottom: 1rem !important;
             }
         </style>
@@ -3656,12 +3634,11 @@ def render_login_screen() -> None:
             type="password",
             key="login_password_input",
         )
-        role = st.radio(
+        role = st.selectbox(
             "Access Profile",
             options=list(ROLE_CONFIGS.keys()),
             format_func=role_with_group,
             key="login_role_select",
-            horizontal=False,
         )
 
         submitted = st.button("Sign In", type="primary", use_container_width=True, key="login_submit_btn")

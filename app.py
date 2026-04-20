@@ -4769,39 +4769,6 @@ def render_step_two() -> None:
         st.session_state.current_step = 0
         st.rerun()
 
-    # ─────────────────────────────────────────────────────────────
-    # J. AGENT DECISION LOG (bottom of page)
-    # ─────────────────────────────────────────────────────────────
-    st.markdown('<div style="height:0.6rem;"></div>', unsafe_allow_html=True)
-    metadata_local = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-    controls_local = st.session_state.controls
-    readiness = compute_agent_readiness(
-        profile=st.session_state.get("profile"),
-        hygiene=st.session_state.get("hygiene"),
-        metadata=metadata_local, controls=controls_local,
-        validation=st.session_state.get("validation"),
-        intake_confirmed=st.session_state.get("intake_confirmed", False),
-        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-        settings_reviewed=st.session_state.get("settings_reviewed", False),
-        metadata_status=st.session_state.get("metadata_status", "Draft"),
-        synthetic_ready=st.session_state.get("synthetic_df") is not None,
-        results_shared=bool(st.session_state.get("results_shared_at")),
-    )
-    render_consolidated_decision_log(
-        readiness=readiness,
-        profile=st.session_state.get("profile"),
-        hygiene=st.session_state.get("hygiene"),
-        metadata=metadata_local, controls=controls_local,
-        generation_summary=st.session_state.get("generation_summary"),
-        validation=st.session_state.get("validation"),
-        intake_confirmed=st.session_state.get("intake_confirmed", False),
-        hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-        settings_reviewed=st.session_state.get("settings_reviewed", False),
-        metadata_status=st.session_state.get("metadata_status", "Draft"),
-        synthetic_ready=st.session_state.get("synthetic_df") is not None,
-        results_shared=bool(st.session_state.get("results_shared_at")),
-    )
-
 
 def render_step_three() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     render_section_header(2, "Confirm approved metadata assumptions for each field.")

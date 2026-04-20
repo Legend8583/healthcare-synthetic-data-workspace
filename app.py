@@ -4295,12 +4295,14 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     # ─────────────────────────────────────────────────────────────
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
-        if sensitive_count == 0:
-            sens_accent = "#136B48"; sens_bg = "#EDF9F3"
-        else:
+        # Tinted background ONLY for meaningful warning state (sensitive fields > 0)
+        # Zero sensitive = white (default, no state to communicate)
+        if sensitive_count > 0:
             sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
+        else:
+            sens_accent = "#0b5ea8"; sens_bg = "#ffffff"
 
-        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#f5f9fc") -> str:
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#ffffff") -> str:
             return (
                 f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
                 f'border:1px solid #d6e2ec;border-radius:12px;">'

@@ -1638,11 +1638,16 @@ def inject_styles() -> None:
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                background: var(--surface);
+                background: #ffffff !important;
                 border: 1px solid var(--line) !important;
                 border-radius: 18px;
                 box-shadow: var(--shadow);
                 padding: 0.35rem 0.45rem 0.7rem 0.45rem;
+            }
+            /* Ensure inner block container also stays white */
+            div[data-testid="stVerticalBlockBorderWrapper"] > div,
+            div[data-testid="stVerticalBlock"] {
+                background: transparent !important;
             }
 
             div[data-testid="stDataFrame"] *,

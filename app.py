@@ -3540,37 +3540,69 @@ def render_login_screen() -> None:
     logo_uri = load_logo_data_uri()
     stakeholder_html = build_stakeholder_group_overview_html()
 
-    # Fix input rendering + equalize column heights on the login screen
+    # Minimal CSS — target widget-level selectors (no st.form dependency)
     st.markdown(
         """
         <style>
-            /* Make both login columns stretch to equal heights */
-            div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
-                height: 100%;
-            }
-            /* Ensure form inputs are fully rendered (fix label clipping) */
-            div[data-testid="stForm"] .stTextInput > div > div > input,
-            div[data-testid="stForm"] .stSelectbox > div > div {
-                min-height: 42px !important;
-                padding: 0.55rem 0.75rem !important;
+            /* Input fields */
+            [data-baseweb="input"] {
+                border-radius: 10px !important;
+                min-height: 48px !important;
                 box-sizing: border-box !important;
-                font-size: 0.95rem !important;
             }
-            div[data-testid="stForm"] .stTextInput,
-            div[data-testid="stForm"] .stSelectbox {
-                margin-bottom: 0.85rem !important;
-            }
-            div[data-testid="stForm"] label,
-            div[data-testid="stForm"] label p {
-                font-size: 0.88rem !important;
-                font-weight: 500 !important;
+            [data-baseweb="input"] input,
+            [data-baseweb="base-input"] input {
+                padding: 0.75rem 0.9rem !important;
+                font-size: 0.96rem !important;
+                line-height: 1.5 !important;
+                box-sizing: border-box !important;
                 color: var(--text) !important;
-                margin-bottom: 0.25rem !important;
-                padding-bottom: 0 !important;
             }
-            /* Stretch right-side container (the Streamlit border container) */
-            div[data-testid="column"]:nth-of-type(2) div[data-testid="stVerticalBlockBorderWrapper"] {
-                height: 100%;
+            /* Radio (Access Profile) — clean card-list style */
+            .stRadio > label p,
+            .stRadio > label {
+                font-size: 0.9rem !important;
+                font-weight: 500 !important;
+                color: #0F172A !important;
+                margin-bottom: 0.5rem !important;
+            }
+            .stRadio [role="radiogroup"] {
+                gap: 0.5rem !important;
+            }
+            .stRadio [role="radiogroup"] label {
+                padding: 0.65rem 0.85rem !important;
+                background: #FFFFFF !important;
+                border: 1px solid var(--line) !important;
+                border-radius: 10px !important;
+                transition: all 0.15s ease !important;
+                cursor: pointer !important;
+            }
+            .stRadio [role="radiogroup"] label:hover {
+                border-color: rgba(11,94,168,0.35) !important;
+                background: rgba(11,94,168,0.02) !important;
+            }
+            .stRadio [role="radiogroup"] label:has(input:checked) {
+                border-color: #0B5EA8 !important;
+                background: rgba(11,94,168,0.06) !important;
+                box-shadow: 0 0 0 1px rgba(11,94,168,0.15) !important;
+            }
+            .stRadio [role="radiogroup"] label p,
+            .stRadio [role="radiogroup"] label div {
+                color: #0F172A !important;
+                font-size: 0.92rem !important;
+                font-weight: 500 !important;
+            }
+            /* Labels for text inputs */
+            .stTextInput label p,
+            .stTextInput label {
+                font-size: 0.9rem !important;
+                font-weight: 500 !important;
+                color: #0F172A !important;
+                margin-bottom: 0.3rem !important;
+            }
+            /* Field spacing */
+            .stTextInput, .stRadio {
+                margin-bottom: 1rem !important;
             }
         </style>
         """,
@@ -3594,86 +3626,90 @@ def render_login_screen() -> None:
                         <div class="trust-badge">Controlled Release</div>
                     </div>
                 </div>
-                {stakeholder_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     with form_col:
-        with st.container(border=True):
-            st.markdown(
-                """
+        # Open styled wrapper (plain div, no Streamlit container)
+        st.markdown(
+            """
+            <div style="background:var(--surface);border:1px solid var(--line);border-radius:24px;
+                padding:1.8rem 1.8rem 1.6rem 1.8rem;box-shadow:var(--shadow);">
                 <div class="login-card-header">
                     <div class="login-card-title">Sign in</div>
                     <div class="login-card-subtitle">Use your hospital workspace credentials to access governed synthetic data requests.</div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            """,
+            unsafe_allow_html=True,
+        )
 
-            with st.form("login_form", clear_on_submit=False):
-                work_email = st.text_input(
-                    "Work Email",
-                    placeholder="name@southlake.ca",
-                    key="login_email_input",
-                )
-                show_password = st.checkbox("Show password", key="login_show_password")
-                password = st.text_input(
-                    "Password",
-                    type="default" if show_password else "password",
-                    key="login_password_input",
-                )
-                role = st.selectbox(
-                    "Access Profile",
-                    options=list(ROLE_CONFIGS.keys()),
-                    format_func=role_with_group,
-                    key="login_role_select",
-                )
-                st.caption(f"Selected group: `{ROLE_TO_GROUP.get(role, 'Users')}`")
-                submitted = st.form_submit_button("Sign In", type="primary", use_container_width=True)
+        # Direct widgets (no st.form — gives better input rendering on Streamlit)
+        work_email = st.text_input(
+            "Work Email",
+            placeholder="name@southlake.ca",
+            key="login_email_input",
+        )
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password_input",
+        )
+        role = st.radio(
+            "Access Profile",
+            options=list(ROLE_CONFIGS.keys()),
+            format_func=role_with_group,
+            key="login_role_select",
+            horizontal=False,
+        )
 
-            if submitted:
-                email_value = work_email.strip().lower()
-                email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
-                if not email_value:
-                    st.error("Enter your work email to continue.")
-                elif not email_valid:
-                    st.error("Enter a valid work email address.")
-                elif password != ROLE_CONFIGS[role]["password"]:
-                    st.error("Password did not match the selected access profile.")
-                else:
-                    st.session_state.authenticated = True
-                    st.session_state.current_role = role
-                    st.session_state.current_user_email = email_value
-                    record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
-                    ensure_dataset_loaded()
-                    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-                    controls = st.session_state.controls
-                    st.session_state.current_step = default_step_for_role(metadata, controls, role)
-                    st.rerun()
+        submitted = st.button("Sign In", type="primary", use_container_width=True, key="login_submit_btn")
 
-            st.markdown(
-                """
-                <div class="login-links">
-                    <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
-                    <a href="mailto:accessrequests@southlake.ca?subject=Healthcare%20Synthetic%20Data%20Workspace%20Access">Request access</a>
-                </div>
-                <div class="login-divider"></div>
-                <div class="security-notice">
-                    <strong>Security notice</strong>
-                    Authorized users only. Access is role-based and activity may be monitored and logged for security and compliance purposes.
-                </div>
-                <div class="login-helper">Demo environment credential for all access profiles: <code>test</code></div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown("**Quick demo access**")
-            quick_cols = st.columns(2)
-            if quick_cols[0].button("Enter as Data Analyst", use_container_width=True):
-                quick_sign_in("Data Analyst")
-            if quick_cols[1].button("Enter as Manager / Reviewer", use_container_width=True):
-                quick_sign_in("Manager / Reviewer")
+        if submitted:
+            email_value = work_email.strip().lower()
+            email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
+            if not email_value:
+                st.error("Enter your work email to continue.")
+            elif not email_valid:
+                st.error("Enter a valid work email address.")
+            elif password != ROLE_CONFIGS[role]["password"]:
+                st.error("Password did not match the selected access profile.")
+            else:
+                st.session_state.authenticated = True
+                st.session_state.current_role = role
+                st.session_state.current_user_email = email_value
+                record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
+                ensure_dataset_loaded()
+                metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+                controls = st.session_state.controls
+                st.session_state.current_step = default_step_for_role(metadata, controls, role)
+                st.rerun()
+
+        st.markdown(
+            """
+            <div class="login-links">
+                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
+                <a href="mailto:accessrequests@southlake.ca?subject=Healthcare%20Synthetic%20Data%20Workspace%20Access">Request access</a>
+            </div>
+            <div class="login-divider"></div>
+            <div class="security-notice">
+                <strong>Security notice</strong>
+                Authorized users only. Access is role-based and activity may be monitored and logged for security and compliance purposes.
+            </div>
+            <div class="login-helper">Demo environment credential: <code>test</code></div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        quick_cols = st.columns(2)
+        if quick_cols[0].button("Enter as Data Analyst", use_container_width=True):
+            quick_sign_in("Data Analyst")
+        if quick_cols[1].button("Enter as Manager / Reviewer", use_container_width=True):
+            quick_sign_in("Manager / Reviewer")
+
+        # Close styled wrapper
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_sidebar(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:

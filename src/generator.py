@@ -5,6 +5,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.copula import fit_copula, sample_copula
+from src.dp_noise import apply_dp_noise_numeric, epsilon_for_preset, estimate_sensitivity
+from src.constraints import detect_constraints, enforce_constraints
+from src.strategies import kde_sample_numeric
+
 
 def _missing_probability(series: pd.Series) -> float:
     return float(series.isna().mean())
@@ -357,6 +362,232 @@ def generate_synthetic_data(
         "outlier_strategy": outlier_strategy,
         "generation_preset": generation_preset,
         "noise_mode": "Higher privacy" if fidelity_priority < 40 else "Balanced" if fidelity_priority < 70 else "Higher fidelity",
+    }
+
+    return synthetic_df, summary
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ADVANCED GENERATION ORCHESTRATOR
+# ═══════════════════════════════════════════════════════════════════
+# Dispatches per-field to the requested strategy, applies copula for
+# multivariate correlation, enforces detected logical constraints,
+# and returns a rich summary for the preview UI.
+
+def generate_synthetic_advanced(
+    df: pd.DataFrame,
+    metadata: list[dict[str, Any]],
+    controls: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Advanced synthetic data generation with per-field strategies,
+    Gaussian Copula for multivariate joint sampling, differential-privacy
+    Laplace noise, and auto-detected constraint enforcement.
+
+    Backward-compatible with generate_synthetic_data(): if no advanced
+    strategies are specified, delegates to the legacy generator for
+    identical output.
+
+    New controls keys:
+        generation_mode:   'advanced' (use this function) or 'legacy'
+        privacy_preset:    'Maximum fidelity' / 'Balanced' / 'Strong privacy' / 'Maximum privacy'
+        privacy_epsilon:   float (overrides preset if set)
+        use_copula:        bool — fit multivariate Gaussian Copula
+        copula_strength:   0-100 — blend toward independence (0) vs fitted correlation (100)
+        enforce_constraints: bool — auto-detect and repair constraint violations
+
+    Per-field strategy override in metadata["strategy"]:
+        'auto', 'empirical', 'kde', 'copula', 'dp_laplace', 'identifier'
+    """
+    # ── Parse controls ──────────────────────────────────────
+    row_count = int(controls.get("synthetic_rows", 500))
+    seed = int(controls.get("seed", 42))
+    use_copula = bool(controls.get("use_copula", False))
+    copula_strength_pct = float(controls.get("copula_strength", 80))
+    enforce_rules = bool(controls.get("enforce_constraints", True))
+
+    privacy_preset = str(controls.get("privacy_preset", "Balanced"))
+    privacy_epsilon = controls.get("privacy_epsilon")
+    if privacy_epsilon is None:
+        privacy_epsilon = epsilon_for_preset(privacy_preset)
+    else:
+        privacy_epsilon = float(privacy_epsilon)
+
+    # Existing controls (reused from legacy)
+    fidelity_priority = int(controls.get("fidelity_priority", 55))
+    correlation_preservation = int(controls.get("correlation_preservation", 65))
+    rare_case_retention = int(controls.get("rare_case_retention", 30))
+    noise_level = int(controls.get("noise_level", 45))
+    missingness_pattern = str(controls.get("missingness_pattern", "Preserve source pattern"))
+    outlier_strategy = str(controls.get("outlier_strategy", "Preserve tails"))
+
+    rng = np.random.default_rng(seed)
+    synthetic_columns: dict[str, pd.Series] = {}
+    excluded_columns: list[str] = []
+    strategy_log: list[dict[str, str]] = []
+
+    # ── 1. Prepare copula (if requested) ────────────────────
+    # Fit a Gaussian Copula over all numeric columns that will be included.
+    copula_columns: list[str] = []
+    copula_model: dict[str, Any] | None = None
+    copula_samples: pd.DataFrame | None = None
+
+    if use_copula:
+        numeric_included = [
+            m["column"] for m in metadata
+            if m.get("include")
+            and m.get("data_type") == "numeric"
+            and m.get("control_action") != "Exclude"
+            and m["column"] in df.columns
+        ]
+        if len(numeric_included) >= 2:
+            copula_columns = numeric_included
+            copula_model = fit_copula(df, numeric_included)
+            copula_strength = max(0.0, min(1.0, copula_strength_pct / 100.0))
+            copula_samples = sample_copula(copula_model, row_count, rng, correlation_strength=copula_strength)
+
+    # ── 2. Per-field generation dispatch ───────────────────
+    uniform_weights = np.full(len(df), 1 / max(len(df), 1))
+    rare_weights = _rare_row_weights(df, metadata) if len(df) else np.array([])
+    retention_mix = np.interp(rare_case_retention, [0, 100], [0.0, 0.72])
+    if len(df):
+        anchor_weights = uniform_weights * (1 - retention_mix) + rare_weights * retention_mix
+        anchor_indices = rng.choice(np.arange(len(df)), size=row_count, replace=True, p=anchor_weights)
+    else:
+        anchor_indices = np.array([], dtype=int)
+
+    locked_columns = set(controls.get("locked_columns", []))
+
+    for item in metadata:
+        column = item["column"]
+        control_action = item.get("control_action", "")
+        if not item.get("include") or control_action == "Exclude":
+            excluded_columns.append(column)
+            continue
+        if column not in df.columns:
+            excluded_columns.append(column)
+            continue
+
+        role = item.get("data_type", "categorical")
+        source_series = df[column]
+        working_series = source_series.copy()
+        locked_distribution = column in locked_columns
+
+        # Generalization control actions
+        if control_action == "Coarse geography":
+            working_series = _coarsen_geography(working_series)
+        elif control_action == "Group text":
+            working_series = _group_text(working_series)
+        elif control_action == "Group rare categories":
+            working_series = _group_rare_categories(working_series)
+        elif control_action == "Clip extremes" and role == "numeric":
+            numeric_series = pd.to_numeric(working_series, errors="coerce")
+            if numeric_series.notna().any():
+                lower = numeric_series.quantile(0.05)
+                upper = numeric_series.quantile(0.95)
+                working_series = numeric_series.clip(lower=lower, upper=upper)
+
+        # Resolve 'auto' strategy: picks based on role
+        strategy_raw = str(item.get("strategy", "auto")).lower()
+        if strategy_raw in {"", "auto", "sample_plus_noise", "sample_category", "sample_plus_jitter", "new_token"}:
+            # Legacy strategy names → auto
+            if role == "identifier":
+                strategy = "identifier"
+            elif role == "numeric":
+                strategy = "copula" if column in copula_columns else "empirical"
+            else:
+                strategy = "auto"  # dispatch to categorical/date below
+        else:
+            strategy = strategy_raw
+
+        is_identifier_like = role == "identifier" or strategy == "identifier"
+
+        # ── Strategy dispatch ──────────────────────────────
+        if is_identifier_like:
+            generated = pd.Series(_generate_identifier(column, row_count))
+            strategy_log.append({"column": column, "strategy": "Surrogate token", "role": role})
+        elif strategy == "copula" and copula_samples is not None and column in copula_samples.columns:
+            # Use the copula-sampled values (preserves joint correlations)
+            values = copula_samples[column].to_numpy()
+            # Integer-preserving
+            source_numeric = pd.to_numeric(source_series, errors="coerce").dropna()
+            if not source_numeric.empty and np.allclose(source_numeric, np.round(source_numeric), atol=1e-9):
+                values = np.round(values)
+            generated = pd.Series(values)
+            strategy_log.append({"column": column, "strategy": "Gaussian Copula", "role": role})
+        elif strategy == "kde" and role == "numeric":
+            values = kde_sample_numeric(working_series, row_count, rng, bandwidth_scale=1.0)
+            generated = pd.Series(values)
+            strategy_log.append({"column": column, "strategy": "KDE (Silverman)", "role": role})
+        elif strategy == "dp_laplace" and role == "numeric":
+            # Base sampling (empirical) + DP noise
+            base = _sample_numeric(column, working_series, row_count, rng, fidelity_priority,
+                                    noise_level, locked_distribution, outlier_strategy)
+            sensitivity = estimate_sensitivity(working_series)
+            dp_noised = apply_dp_noise_numeric(
+                pd.to_numeric(base, errors="coerce").fillna(base.median() if not base.empty else 0).to_numpy(),
+                epsilon=privacy_epsilon,
+                sensitivity=sensitivity,
+                rng=rng,
+            )
+            generated = pd.Series(dp_noised)
+            strategy_log.append({"column": column, "strategy": f"DP Laplace (ε={privacy_epsilon:.2f})", "role": role})
+        elif role == "numeric":
+            generated = _sample_numeric(column, working_series, row_count, rng, fidelity_priority,
+                                         noise_level, locked_distribution, outlier_strategy)
+            strategy_log.append({"column": column, "strategy": "Empirical + Gaussian noise", "role": role})
+        elif role == "date":
+            generated = _sample_dates(working_series, row_count, rng, fidelity_priority,
+                                      control_action, noise_level, locked_distribution)
+            strategy_log.append({"column": column, "strategy": "Date resample + jitter", "role": role})
+        else:
+            generated = _sample_categorical(working_series, row_count, rng, fidelity_priority,
+                                            noise_level, rare_case_retention, locked_distribution)
+            strategy_log.append({"column": column, "strategy": "Categorical frequency sampling", "role": role})
+
+        # Anchor-blending (preserves non-copula correlation) + missingness
+        if not is_identifier_like and len(anchor_indices):
+            anchor_source = working_series.iloc[anchor_indices].reset_index(drop=True)
+            anchor_ready = _prepare_anchor_output(anchor_source, role, control_action)
+            # For copula fields, reduce extra blending (copula already handles correlation)
+            effective_blend = 0 if strategy == "copula" else correlation_preservation
+            generated = _blend_with_anchor(generated.reset_index(drop=True), anchor_ready, rng,
+                                            effective_blend, locked_distribution)
+            generated = _apply_missingness(generated, working_series, row_count, rng,
+                                            missingness_pattern, anchor_source)
+
+        synthetic_columns[column] = generated.reset_index(drop=True)
+
+    synthetic_df = pd.DataFrame(synthetic_columns)
+
+    # ── 3. Enforce constraints ─────────────────────────────
+    detected_constraints: list[dict[str, Any]] = []
+    constraint_repairs: list[dict[str, Any]] = []
+    if enforce_rules and not synthetic_df.empty:
+        detected_constraints = detect_constraints(df, metadata)
+        synthetic_df, constraint_repairs = enforce_constraints(synthetic_df, detected_constraints)
+
+    # ── 4. Build rich summary ──────────────────────────────
+    summary = {
+        "rows_generated": len(synthetic_df),
+        "columns_generated": len(synthetic_df.columns),
+        "excluded_columns": excluded_columns,
+        "fidelity_priority": fidelity_priority,
+        "privacy_preset": privacy_preset,
+        "privacy_epsilon": round(float(privacy_epsilon), 3),
+        "use_copula": use_copula,
+        "copula_columns": copula_columns,
+        "copula_strength": copula_strength_pct if use_copula else 0,
+        "enforce_constraints": enforce_rules,
+        "detected_constraints": detected_constraints,
+        "constraint_repairs": constraint_repairs,
+        "strategy_log": strategy_log,
+        "correlation_preservation": correlation_preservation,
+        "rare_case_retention": rare_case_retention,
+        "noise_level": noise_level,
+        "missingness_pattern": missingness_pattern,
+        "outlier_strategy": outlier_strategy,
+        "locked_columns": sorted(locked_columns),
+        "generation_mode": "advanced",
     }
 
     return synthetic_df, summary

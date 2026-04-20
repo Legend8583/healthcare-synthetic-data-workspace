@@ -46,6 +46,69 @@ def _categorical_score(original: pd.Series, synthetic: pd.Series) -> dict[str, A
     }
 
 
+def _correlation_preservation_score(
+    original_df: pd.DataFrame,
+    synthetic_df: pd.DataFrame,
+    metadata: list[dict[str, Any]],
+) -> tuple[float, dict[str, Any]]:
+    """Measure how well inter-column correlations are preserved.
+
+    Uses Frobenius distance between the original and synthetic correlation
+    matrices for numeric columns. Returns a 0-100 score (100 = perfectly
+    preserved correlations, 0 = completely lost).
+
+    Reports the top field pairs with largest correlation drift for analyst
+    feedback.
+    """
+    numeric_cols = [
+        item["column"] for item in metadata
+        if item["include"] and item["data_type"] == "numeric" and item["column"] in synthetic_df.columns
+    ]
+    if len(numeric_cols) < 2:
+        return 0.0, {"details": "Need ≥2 numeric fields for correlation analysis.", "drift_pairs": []}
+
+    # Build numeric sub-frames, aligning columns
+    orig_numeric = original_df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+    synth_numeric = synthetic_df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+
+    try:
+        orig_corr = orig_numeric.corr().fillna(0).to_numpy()
+        synth_corr = synth_numeric.corr().fillna(0).to_numpy()
+    except Exception:
+        return 0.0, {"details": "Correlation computation failed.", "drift_pairs": []}
+
+    # Frobenius distance (normalized)
+    diff = orig_corr - synth_corr
+    frob_distance = float(np.sqrt((diff ** 2).sum()))
+    # Maximum possible (if everything went from +1 to -1 on all off-diagonals)
+    k = len(numeric_cols)
+    max_distance = float(np.sqrt(k * (k - 1) * 4))
+    if max_distance > 0:
+        normalized_distance = min(1.0, frob_distance / max_distance)
+    else:
+        normalized_distance = 0.0
+
+    score = round((1.0 - normalized_distance) * 100, 1)
+
+    # Top drift pairs
+    drift_pairs: list[dict[str, Any]] = []
+    for i in range(k):
+        for j in range(i + 1, k):
+            delta = float(abs(orig_corr[i, j] - synth_corr[i, j]))
+            drift_pairs.append({
+                "pair": f"{numeric_cols[i]} ↔ {numeric_cols[j]}",
+                "original": round(float(orig_corr[i, j]), 3),
+                "synthetic": round(float(synth_corr[i, j]), 3),
+                "drift": round(delta, 3),
+            })
+    drift_pairs.sort(key=lambda x: x["drift"], reverse=True)
+
+    return score, {
+        "details": f"Frobenius distance {frob_distance:.2f} across {k} numeric fields.",
+        "drift_pairs": drift_pairs[:8],  # top 8
+    }
+
+
 def validate_synthetic_data(
     original_df: pd.DataFrame,
     synthetic_df: pd.DataFrame,
@@ -142,10 +205,17 @@ def validate_synthetic_data(
     else:
         verdict = "Needs another pass: adjust metadata or generation controls before presenting the dataset as production-like."
 
+    # New: correlation preservation metric
+    correlation_score, correlation_details = _correlation_preservation_score(
+        original_df, synthetic_df, metadata
+    )
+
     return {
         "overall_score": overall_score,
         "fidelity_score": fidelity_score,
         "privacy_score": round(privacy_score, 1),
+        "correlation_score": correlation_score,
+        "correlation_details": correlation_details,
         "verdict": verdict,
         "fidelity_table": fidelity_table,
         "privacy_checks": privacy_checks,

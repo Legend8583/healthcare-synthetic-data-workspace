@@ -3539,160 +3539,219 @@ def render_stakeholder_group_overview() -> None:
 def render_login_screen() -> None:
     logo_uri = load_logo_data_uri()
 
-    # Hide Streamlit's default top padding on the login screen to let the split layout fill the viewport
+    # Page-level CSS
     st.markdown(
         """
         <style>
-            /* Login-specific resets */
-            .login-page-wrap { margin: -5rem -1rem 0 -1rem; }
-            @media (max-width: 1100px) { .login-page-wrap { margin: -5rem 0 0 0; } }
+            .block-container { padding-top: 1.5rem !important; }
 
-            /* Right-side form input fields */
-            .login-form-area [data-baseweb="input"] {
+            /* Left panel — dark brand */
+            .login-left-panel {
+                background: linear-gradient(140deg, #0B3A6B 0%, #08467D 40%, #0B5EA8 100%);
+                border-radius: 20px;
+                padding: 2.5rem 2.5rem;
+                min-height: 620px;
+                color: #FFFFFF;
+                position: relative;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+            }
+            .login-left-panel::before {
+                content: "";
+                position: absolute;
+                top: -150px;
+                right: -150px;
+                width: 400px;
+                height: 400px;
+                background: radial-gradient(circle, rgba(25,203,197,0.12) 0%, transparent 70%);
+                border-radius: 50%;
+                z-index: 0;
+            }
+            .login-left-inner { position: relative; z-index: 1; }
+            .login-brand-logo {
+                width: 220px;
+                max-width: 70%;
+                height: auto;
+                margin-bottom: 2rem;
+                filter: brightness(0) invert(1);
+                opacity: 0.95;
+            }
+            .login-brand-kicker {
+                font-size: 0.72rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.12em;
+                color: rgba(255,255,255,0.65);
+                margin-bottom: 0.9rem;
+            }
+            .login-brand-headline {
+                font-size: 2.2rem;
+                font-weight: 600;
+                line-height: 1.15;
+                letter-spacing: -0.015em;
+                margin: 0 0 1.1rem 0;
+                color: #FFFFFF;
+            }
+            .login-brand-sub {
+                font-size: 0.98rem;
+                line-height: 1.6;
+                color: rgba(255,255,255,0.78);
+                margin: 0 0 2.2rem 0;
+            }
+            .login-feature {
+                display: flex;
+                gap: 0.85rem;
+                align-items: flex-start;
+                margin-bottom: 0.9rem;
+            }
+            .login-feature-icon {
+                flex: 0 0 28px;
+                height: 28px;
+                border-radius: 8px;
+                background: rgba(25,203,197,0.18);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #19CBC5;
+                font-weight: 700;
+                font-size: 0.85rem;
+            }
+            .login-feature-title {
+                font-size: 0.92rem;
+                font-weight: 600;
+                color: #FFFFFF;
+            }
+            .login-feature-desc {
+                font-size: 0.82rem;
+                color: rgba(255,255,255,0.72);
+                margin-top: 0.1rem;
+                line-height: 1.5;
+            }
+
+            /* Right panel — form */
+            .login-right-panel {
+                padding: 2.5rem 1rem 2.5rem 1.5rem;
+            }
+            .login-form-title {
+                font-size: 1.75rem;
+                font-weight: 600;
+                color: #0F172A;
+                letter-spacing: -0.015em;
+                margin: 0 0 0.35rem 0;
+                line-height: 1.2;
+            }
+            .login-form-sub {
+                font-size: 0.92rem;
+                color: #64748B;
+                line-height: 1.5;
+                margin-bottom: 1.8rem;
+            }
+
+            /* Input styling */
+            .login-right-panel [data-baseweb="input"] {
                 border-radius: 10px !important;
                 border: 1px solid #E2E8F0 !important;
-                min-height: 48px !important;
+                min-height: 46px !important;
                 box-sizing: border-box !important;
-                transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
             }
-            .login-form-area [data-baseweb="input"]:focus-within {
+            .login-right-panel [data-baseweb="input"]:focus-within {
                 border-color: #0B5EA8 !important;
                 box-shadow: 0 0 0 3px rgba(11,94,168,0.12) !important;
             }
-            .login-form-area [data-baseweb="input"] input,
-            .login-form-area [data-baseweb="base-input"] input {
-                padding: 0.7rem 0.9rem !important;
-                font-size: 0.96rem !important;
+            .login-right-panel [data-baseweb="input"] input,
+            .login-right-panel [data-baseweb="base-input"] input {
+                padding: 0.65rem 0.9rem !important;
+                font-size: 0.95rem !important;
                 line-height: 1.5 !important;
                 color: #0F172A !important;
                 background: transparent !important;
             }
-            /* Labels */
-            .login-form-area .stTextInput label p,
-            .login-form-area .stTextInput label {
-                font-size: 0.88rem !important;
+            .login-right-panel .stTextInput label p,
+            .login-right-panel .stTextInput label {
+                font-size: 0.87rem !important;
                 font-weight: 500 !important;
                 color: #334155 !important;
-                margin-bottom: 0.35rem !important;
+                margin-bottom: 0.3rem !important;
             }
-            .login-form-area .stTextInput {
-                margin-bottom: 1rem !important;
+            .login-right-panel .stTextInput {
+                margin-bottom: 0.85rem !important;
             }
-            /* Primary button full-width */
-            .login-form-area .stButton > button[kind="primary"] {
-                background: #0B5EA8 !important;
-                border: 1px solid #0B5EA8 !important;
-                border-radius: 10px !important;
-                padding: 0.7rem 1rem !important;
-                font-size: 0.96rem !important;
-                font-weight: 600 !important;
-                min-height: 48px !important;
-                box-shadow: 0 1px 2px rgba(11,94,168,0.2) !important;
-                transition: all 0.15s ease !important;
+            .login-divider {
+                display: flex;
+                align-items: center;
+                gap: 0.8rem;
+                margin: 1.5rem 0 1rem 0;
             }
-            .login-form-area .stButton > button[kind="primary"]:hover {
-                background: #084A86 !important;
-                border-color: #084A86 !important;
+            .login-divider-line { flex: 1; height: 1px; background: #E2E8F0; }
+            .login-divider-text { font-size: 0.76rem; color: #94A3B8; font-weight: 500; }
+            .login-footer {
+                margin-top: 1.6rem;
+                padding-top: 1.1rem;
+                border-top: 1px solid #F1F5F9;
+                font-size: 0.8rem;
+                color: #94A3B8;
+                line-height: 1.55;
             }
-            /* Secondary (quick demo) buttons */
-            .login-form-area .stButton > button[kind="secondary"],
-            .login-form-area .stButton > button:not([kind="primary"]) {
-                background: #FFFFFF !important;
-                border: 1px solid #E2E8F0 !important;
-                color: #334155 !important;
-                border-radius: 10px !important;
-                padding: 0.6rem 1rem !important;
-                font-size: 0.9rem !important;
-                font-weight: 500 !important;
-                min-height: 44px !important;
-                transition: all 0.15s ease !important;
+            .login-footer a {
+                color: #0B5EA8;
+                text-decoration: none;
+                font-weight: 500;
+                margin-right: 1.2rem;
             }
-            .login-form-area .stButton > button:not([kind="primary"]):hover {
-                border-color: #CBD5E1 !important;
-                background: #F8FAFC !important;
+            .login-footer code {
+                background: #F1F5F9;
+                padding: 0.1rem 0.4rem;
+                border-radius: 4px;
+                font-size: 0.76rem;
+                color: #475569;
             }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # Open full-viewport split container
-    st.markdown('<div class="login-page-wrap">', unsafe_allow_html=True)
+    left_col, right_col = st.columns([1, 1], gap="medium")
 
-    left_col, right_col = st.columns([1, 1], gap="small")
-
-    # ── LEFT: Brand panel (dark gradient, white text) ──
+    # ── LEFT: brand panel (single self-contained HTML block) ──
+    logo_html = (
+        f'<img src="{logo_uri}" alt="Southlake Health" class="login-brand-logo" />'
+        if logo_uri else ''
+    )
     with left_col:
-        logo_html = (
-            f'<img src="{logo_uri}" alt="Southlake Health" '
-            f'style="width:220px;max-width:70%;height:auto;margin-bottom:2rem;filter:brightness(0) invert(1);opacity:0.95;" />'
-            if logo_uri else ''
-        )
         st.markdown(
             f"""
-            <div style="
-                background: linear-gradient(140deg, #0B3A6B 0%, #08467D 40%, #0B5EA8 100%);
-                min-height: 100vh;
-                padding: 4rem 3.5rem;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-                color: #FFFFFF;
-                position: relative;
-                overflow: hidden;
-            ">
-                <div style="position:absolute;top:-200px;right:-200px;width:500px;height:500px;
-                    background:radial-gradient(circle,rgba(25,203,197,0.12) 0%,transparent 70%);border-radius:50%;"></div>
-                <div style="position:absolute;bottom:-150px;left:-150px;width:400px;height:400px;
-                    background:radial-gradient(circle,rgba(255,255,255,0.05) 0%,transparent 70%);border-radius:50%;"></div>
-
-                <div style="position:relative;z-index:1;">
+            <div class="login-left-panel">
+                <div class="login-left-inner">
                     {logo_html}
-                    <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;
-                        color:rgba(255,255,255,0.65);margin-bottom:0.9rem;">
-                        Agentic Synthetic Data Workspace
-                    </div>
-                    <h1 style="font-size:2.4rem;font-weight:600;line-height:1.15;letter-spacing:-0.015em;
-                        margin:0 0 1.1rem 0;color:#FFFFFF;max-width:460px;">
-                        Governed synthetic data for hospital teams.
-                    </h1>
-                    <p style="font-size:1rem;line-height:1.6;color:rgba(255,255,255,0.75);max-width:440px;margin:0;">
+                    <div class="login-brand-kicker">Agentic Synthetic Data Workspace</div>
+                    <h1 class="login-brand-headline">Governed synthetic data for hospital teams.</h1>
+                    <p class="login-brand-sub">
                         Create synthetic healthcare datasets with metadata transparency,
-                        reviewer sign-off, and controlled release — without moving source data.
+                        reviewer sign-off, and controlled release &mdash; without moving source data.
                     </p>
                 </div>
-
-                <div style="position:relative;z-index:1;">
-                    <div style="display:grid;grid-template-columns:1fr;gap:0.85rem;max-width:460px;">
-                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
-                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
-                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
-                            <div>
-                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Role-based access</div>
-                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
-                                    Data Analyst uploads. Manager signs off. Auditable throughout.
-                                </div>
-                            </div>
+                <div class="login-left-inner">
+                    <div class="login-feature">
+                        <div class="login-feature-icon">&#10003;</div>
+                        <div>
+                            <div class="login-feature-title">Role-based access</div>
+                            <div class="login-feature-desc">Data Analyst uploads. Manager signs off. Auditable throughout.</div>
                         </div>
-                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
-                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
-                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
-                            <div>
-                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Metadata-only transformation</div>
-                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
-                                    Source records never leave the governed boundary.
-                                </div>
-                            </div>
+                    </div>
+                    <div class="login-feature">
+                        <div class="login-feature-icon">&#10003;</div>
+                        <div>
+                            <div class="login-feature-title">Metadata-only transformation</div>
+                            <div class="login-feature-desc">Source records never leave the governed boundary.</div>
                         </div>
-                        <div style="display:flex;gap:0.85rem;align-items:flex-start;">
-                            <div style="flex:0 0 28px;height:28px;border-radius:8px;background:rgba(25,203,197,0.15);
-                                display:flex;align-items:center;justify-content:center;color:#19CBC5;font-weight:700;font-size:0.85rem;">✓</div>
-                            <div>
-                                <div style="font-size:0.92rem;font-weight:600;color:#FFFFFF;">Controlled release</div>
-                                <div style="font-size:0.82rem;color:rgba(255,255,255,0.7);margin-top:0.1rem;line-height:1.5;">
-                                    Verified synthetic packages released for internal modeling only.
-                                </div>
-                            </div>
+                    </div>
+                    <div class="login-feature">
+                        <div class="login-feature-icon">&#10003;</div>
+                        <div>
+                            <div class="login-feature-title">Controlled release</div>
+                            <div class="login-feature-desc">Verified synthetic packages released for internal modeling only.</div>
                         </div>
                     </div>
                 </div>
@@ -3701,120 +3760,87 @@ def render_login_screen() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── RIGHT: Form area ──
+    # ── RIGHT: form panel — use pure Streamlit widgets inside a styled wrapper ──
     with right_col:
+        # We use a class on the column area via a marker div — all widgets below inherit the CSS
+        st.markdown('<div class="login-right-panel">', unsafe_allow_html=True)
+
         st.markdown(
-            '''
-            <div class="login-form-area" style="
-                min-height: 100vh;
-                padding: 4rem 3.5rem;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                background: #FFFFFF;
-                max-width: 460px;
-                margin: 0 auto;
-            ">
-                <div style="margin-bottom:1.8rem;">
-                    <h2 style="font-size:1.9rem;font-weight:600;color:#0F172A;letter-spacing:-0.015em;margin:0 0 0.4rem 0;line-height:1.2;">
-                        Sign in
-                    </h2>
-                    <div style="font-size:0.94rem;color:#64748B;line-height:1.5;">
-                        Use your hospital workspace credentials to continue.
-                    </div>
-                </div>
-            ''',
+            """
+            <div class="login-form-title">Sign in</div>
+            <div class="login-form-sub">Use your hospital workspace credentials to continue.</div>
+            """,
             unsafe_allow_html=True,
         )
 
-        # Constrain widgets to the form width
-        form_cols = st.columns([0.05, 0.9, 0.05])
-        with form_cols[1]:
-            work_email = st.text_input(
-                "Work email",
-                placeholder="name@southlake.ca",
-                key="login_email_input",
-                label_visibility="visible",
-            )
-            password = st.text_input(
-                "Password",
-                type="password",
-                key="login_password_input",
-                label_visibility="visible",
-            )
+        work_email = st.text_input(
+            "Work email",
+            placeholder="name@southlake.ca",
+            key="login_email_input",
+        )
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="login_password_input",
+        )
 
-            # Default role (Data Analyst) — no dropdown on login.
-            # User picks role via the quick-access buttons below, or role is auto-determined.
-            default_role = "Data Analyst"
+        submitted = st.button(
+            "Continue",
+            type="primary",
+            use_container_width=True,
+            key="login_submit_btn",
+        )
 
-            submitted = st.button(
-                "Continue",
-                type="primary",
-                use_container_width=True,
-                key="login_submit_btn",
-            )
+        if submitted:
+            email_value = work_email.strip().lower()
+            email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
+            role = "Data Analyst"
+            if not email_value:
+                st.error("Enter your work email to continue.")
+            elif not email_valid:
+                st.error("Enter a valid work email address.")
+            elif password != ROLE_CONFIGS[role]["password"]:
+                st.error("Password did not match your access profile.")
+            else:
+                st.session_state.authenticated = True
+                st.session_state.current_role = role
+                st.session_state.current_user_email = email_value
+                record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
+                ensure_dataset_loaded()
+                metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
+                controls = st.session_state.controls
+                st.session_state.current_step = default_step_for_role(metadata, controls, role)
+                st.rerun()
 
-            if submitted:
-                email_value = work_email.strip().lower()
-                email_valid = "@" in email_value and "." in email_value.split("@")[-1] if "@" in email_value else False
-                role = default_role
-                if not email_value:
-                    st.error("Enter your work email to continue.")
-                elif not email_valid:
-                    st.error("Enter a valid work email address.")
-                elif password != ROLE_CONFIGS[role]["password"]:
-                    st.error("Password did not match your access profile.")
-                else:
-                    st.session_state.authenticated = True
-                    st.session_state.current_role = role
-                    st.session_state.current_user_email = email_value
-                    record_audit_event("User signed in", f"{email_value} signed in as {role}.", status="Logged")
-                    ensure_dataset_loaded()
-                    metadata = editor_frame_to_metadata(st.session_state.metadata_editor_df)
-                    controls = st.session_state.controls
-                    st.session_state.current_step = default_step_for_role(metadata, controls, role)
-                    st.rerun()
+        st.markdown(
+            """
+            <div class="login-divider">
+                <div class="login-divider-line"></div>
+                <div class="login-divider-text">or continue as demo</div>
+                <div class="login-divider-line"></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            # Divider
-            st.markdown(
-                '''
-                <div style="display:flex;align-items:center;gap:0.8rem;margin:1.5rem 0 1rem 0;">
-                    <div style="flex:1;height:1px;background:#E2E8F0;"></div>
-                    <div style="font-size:0.78rem;color:#94A3B8;font-weight:500;">or continue as demo</div>
-                    <div style="flex:1;height:1px;background:#E2E8F0;"></div>
+        if st.button("Data Analyst", use_container_width=True, key="login_demo_analyst"):
+            quick_sign_in("Data Analyst")
+        if st.button("Manager / Reviewer", use_container_width=True, key="login_demo_manager"):
+            quick_sign_in("Manager / Reviewer")
+
+        st.markdown(
+            """
+            <div class="login-footer">
+                <div style="margin-bottom:0.6rem;">
+                    <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
+                    <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access">Request access</a>
                 </div>
-                ''',
-                unsafe_allow_html=True,
-            )
-
-            if st.button("Data Analyst", use_container_width=True, key="login_demo_analyst"):
-                quick_sign_in("Data Analyst")
-            if st.button("Manager / Reviewer", use_container_width=True, key="login_demo_manager"):
-                quick_sign_in("Manager / Reviewer")
-
-            # Footer links
-            st.markdown(
-                '''
-                <div style="margin-top:2rem;padding-top:1.3rem;border-top:1px solid #F1F5F9;">
-                    <div style="display:flex;gap:1.5rem;font-size:0.84rem;margin-bottom:0.8rem;">
-                        <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request"
-                            style="color:#0B5EA8;text-decoration:none;font-weight:500;">Forgot password?</a>
-                        <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access"
-                            style="color:#0B5EA8;text-decoration:none;font-weight:500;">Request access</a>
-                    </div>
-                    <div style="font-size:0.78rem;color:#94A3B8;line-height:1.55;">
-                        Demo credential: <code style="background:#F1F5F9;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.74rem;color:#475569;">test</code>
-                        &middot; Authorized users only. Activity is logged for compliance.
-                    </div>
-                </div>
-                ''',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # Close full-viewport split container
-    st.markdown('</div>', unsafe_allow_html=True)
+                Demo credential: <code>test</code> &middot; Authorized users only. Activity is logged for compliance.
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def render_sidebar(metadata: list[dict[str, Any]], controls: dict[str, Any]) -> None:

@@ -1276,12 +1276,38 @@ def render_consolidated_decision_log(
 
     history_html = "".join(history_items)
 
+    # Count expandable detail items for the summary label
+    expandable_count = len(codes) + (len(classified_hygiene) if classified_hygiene else 0) + len(events)
+
+    # Build the body content that will be inside <details> (collapsible)
+    details_body = (
+        codes_html
+        + hygiene_html
+        + '<div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(214,226,236,0.5);">'
+        + '<div style="font-size:0.78rem;font-weight:600;color:#004B8B;margin-bottom:0.35rem;">Decision history</div>'
+        + '<div>' + history_html + '</div>'
+        + '</div>'
+    )
+
+    # The header (status badge + Next action) stays always visible; details body is collapsible
+    # Decision log opens by default when status is blocked or needs attention; closed when ready/released
+    open_attr = ' open' if status in ("blocked", "attention_required") else ''
+
     html_out = (
         f'<div class="action-shell" style="border-left:3px solid {border};">'
         '<h4>Agent Decision Log</h4>'
-        + header + codes_html + hygiene_html
-        + '<details style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(214,226,236,0.5);"><summary style="font-size:0.78rem;font-weight:600;color:#004B8B;cursor:pointer;margin-bottom:0.3rem;">Decision history</summary>'
-        + '<div style="margin-top:0.3rem;">' + history_html + '</div></details>'
+        + header
+        + f'<details{open_attr} style="margin-top:0.2rem;">'
+        + '<summary style="font-size:0.78rem;font-weight:600;color:#004B8B;cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:0.35rem;padding:0.3rem 0;user-select:none;">'
+        + '<span class="agent-log-caret" style="display:inline-block;transition:transform 0.15s ease;font-size:0.7rem;">&#9654;</span>'
+        + f'<span>Details &amp; decision history</span>'
+        + '</summary>'
+        + '<style>'
+        + '.action-shell details[open] .agent-log-caret { transform: rotate(90deg); }'
+        + '.action-shell summary::-webkit-details-marker { display: none; }'
+        + '</style>'
+        + f'<div style="margin-top:0.4rem;">{details_body}</div>'
+        + '</details>'
         + '</div>'
     )
     st.markdown(html_out, unsafe_allow_html=True)

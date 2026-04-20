@@ -5782,28 +5782,21 @@ def main() -> None:
         if current_step == 1 and st.session_state.get("hygiene") is not None:
             inline_hygiene = classify_hygiene_issues(st.session_state.get("hygiene"))
 
-        # Collapsible wrapper — decision log is secondary context, not primary task
-        # Expanded by default when there are blocking issues, collapsed otherwise
-        has_blockers = bool(readiness.get("blockers")) if isinstance(readiness, dict) else False
-        with st.expander(
-            "Agent decision log",
-            expanded=has_blockers,
-        ):
-            render_consolidated_decision_log(
-                readiness=readiness,
-                profile=st.session_state.get("profile"),
-                hygiene=st.session_state.get("hygiene"),
-                metadata=metadata, controls=controls,
-                generation_summary=st.session_state.get("generation_summary"),
-                validation=st.session_state.get("validation"),
-                intake_confirmed=st.session_state.get("intake_confirmed", False),
-                hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
-                settings_reviewed=st.session_state.get("settings_reviewed", False),
-                metadata_status=st.session_state.get("metadata_status", "Draft"),
-                synthetic_ready=st.session_state.get("synthetic_df") is not None,
-                results_shared=bool(st.session_state.get("results_shared_at")),
-                classified_hygiene=inline_hygiene,
-            )
+        render_consolidated_decision_log(
+            readiness=readiness,
+            profile=st.session_state.get("profile"),
+            hygiene=st.session_state.get("hygiene"),
+            metadata=metadata, controls=controls,
+            generation_summary=st.session_state.get("generation_summary"),
+            validation=st.session_state.get("validation"),
+            intake_confirmed=st.session_state.get("intake_confirmed", False),
+            hygiene_reviewed=st.session_state.get("hygiene_reviewed", False),
+            settings_reviewed=st.session_state.get("settings_reviewed", False),
+            metadata_status=st.session_state.get("metadata_status", "Draft"),
+            synthetic_ready=st.session_state.get("synthetic_df") is not None,
+            results_shared=bool(st.session_state.get("results_shared_at")),
+            classified_hygiene=inline_hygiene,
+        )
 
     if current_step == 0:
         render_step_one(metadata)

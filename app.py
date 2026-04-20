@@ -3838,21 +3838,21 @@ def render_login_screen() -> None:
 
         st.markdown(
             """
-            <div class="login-footer">
-                <div style="text-align:left;margin-bottom:0;">
-                    <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request">Forgot password?</a>
-                    <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access">Request access</a>
-                </div>
-            </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # Full-width bottom footer — centered demo credential + security notice
+    # Full-width bottom footer — centered links + demo credential + security notice
     st.markdown(
         """
         <div style="margin-top:2rem;padding:1.5rem 1rem 1rem 1rem;border-top:1px solid #E2E8F0;text-align:center;">
+            <div style="margin-bottom:0.7rem;">
+                <a href="mailto:itsupport@southlake.ca?subject=Password%20Reset%20Request"
+                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.88rem;margin:0 0.8rem;">Forgot password?</a>
+                <a href="mailto:accessrequests@southlake.ca?subject=Workspace%20Access"
+                    style="color:#0B5EA8;text-decoration:none;font-weight:500;font-size:0.88rem;margin:0 0.8rem;">Request access</a>
+            </div>
             <div style="font-size:0.82rem;color:#64748B;margin-bottom:0.4rem;">
                 Demo credential for all access profiles:
                 <code style="background:#F1F5F9;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.78rem;color:#475569;margin-left:0.3rem;">test</code>

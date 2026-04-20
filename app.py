@@ -533,7 +533,7 @@ def inject_styles() -> None:
                 --accent: #19cbc5;
                 --bg: #F3F7FB;
                 --surface: #ffffff;
-                --surface-soft: #ffffff;
+                --surface-soft: #F8FAFC;
                 --line: #D9E3EF;
                 --line-soft: #E5EDF5;
                 --text: #17324d;
@@ -1618,21 +1618,21 @@ def inject_styles() -> None:
             div[data-testid="stTextInput"] input,
             div[data-testid="stTextArea"] textarea {
                 border-radius: 14px;
-                background: var(--surface) !important;
+                background: var(--surface-soft) !important;
                 color: var(--text) !important;
                 -webkit-text-fill-color: var(--text) !important;
-                border: 1px solid var(--line) !important;
+                border: 1px solid var(--line-soft) !important;
             }
 
             div[data-testid="stFileUploader"] section {
-                background: var(--surface) !important;
-                border: 1px solid var(--line) !important;
+                background: var(--surface-soft) !important;
+                border: 1px solid var(--line-soft) !important;
                 border-radius: 18px !important;
             }
 
             div[data-testid="stDataFrame"],
             div[data-testid="stTable"] {
-                background: var(--surface) !important;
+                background: var(--surface-soft) !important;
                 border-radius: 18px;
             }
 
@@ -4295,13 +4295,13 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
     if has_data:
         sensitive_count = len(build_phi_detection_frame(st.session_state.profile, metadata))
         # Tinted background ONLY for meaningful warning state (sensitive fields > 0)
-        # Zero sensitive = white (default, no state to communicate)
+        # Zero sensitive = subtle off-white (default secondary surface, no state to communicate)
         if sensitive_count > 0:
             sens_accent = "#9C6A17"; sens_bg = "#FFF6E3"
         else:
-            sens_accent = "#0b5ea8"; sens_bg = "#ffffff"
+            sens_accent = "#0b5ea8"; sens_bg = "#F8FAFC"
 
-        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#ffffff") -> str:
+        def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#F8FAFC") -> str:
             return (
                 f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
                 f'border:1px solid #E5EDF5;border-radius:12px;">'

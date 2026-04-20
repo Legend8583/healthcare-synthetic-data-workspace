@@ -4535,6 +4535,18 @@ def render_step_two() -> None:
         prev_step = st.session_state.get("current_step", 1)
         prev_actions = list(st.session_state.get("last_cleaning_actions") or [])
 
+        # Push undo snapshot BEFORE applying the fix
+        undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
+        undo_stack.append({
+            "source_df": st.session_state.source_df.copy(),
+            "source_label": st.session_state.source_label,
+            "source_file_size": st.session_state.get("source_file_size"),
+            "last_cleaning_actions": prev_actions,
+            "audit_label": audit_label,
+        })
+        # Keep at most 10 undo snapshots to bound memory
+        st.session_state.hygiene_undo_stack = undo_stack[-10:]
+
         cleaned_df, actions = apply_hygiene_fixes(st.session_state.source_df, targeted)
         base_label = st.session_state.source_label.split(" * remediated")[0]
         set_source_dataframe(cleaned_df, f"{base_label} * remediated")
@@ -4548,6 +4560,32 @@ def render_step_two() -> None:
         record_audit_event(
             audit_label,
             "; ".join(item["effect"] for item in actions),
+            status="Completed",
+        )
+        st.rerun()
+
+    def _undo_last_fix() -> None:
+        """Restore the most recent pre-fix snapshot."""
+        undo_stack = list(st.session_state.get("hygiene_undo_stack") or [])
+        if not undo_stack:
+            return
+        snapshot = undo_stack.pop()
+        st.session_state.hygiene_undo_stack = undo_stack
+
+        prev_step = st.session_state.get("current_step", 1)
+        prev_reviewed = st.session_state.get("hygiene_reviewed", False)
+
+        # Restore source dataframe (re-runs profile + hygiene via set_source_dataframe)
+        set_source_dataframe(snapshot["source_df"], snapshot["source_label"])
+        st.session_state.source_file_size = snapshot.get("source_file_size")
+        st.session_state.last_cleaning_actions = snapshot["last_cleaning_actions"]
+        st.session_state.intake_confirmed = True
+        st.session_state.hygiene_reviewed = prev_reviewed
+        st.session_state.current_step = prev_step
+
+        record_audit_event(
+            "Remediation undone",
+            f"Reverted: {snapshot['audit_label']}",
             status="Completed",
         )
         st.rerun()
@@ -4726,11 +4764,26 @@ def render_step_two() -> None:
     if st.session_state.last_cleaning_actions:
         with st.container(border=True, key="last_remediation_panel"):
             count = len(st.session_state.last_cleaning_actions)
-            st.markdown(
-                f'<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Fixes applied</div>'
-                f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{count} cleanup action(s) applied to the source dataset</div>',
-                unsafe_allow_html=True,
-            )
+            undo_available = bool(st.session_state.get("hygiene_undo_stack"))
+
+            header_cols = st.columns([2.5, 1], gap="small")
+            with header_cols[0]:
+                st.markdown(
+                    f'<div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#136B48;margin-bottom:0.3rem;">Fixes applied</div>'
+                    f'<div style="font-size:1.15rem;font-weight:600;color:#17324d;margin-bottom:0.65rem;line-height:1.3;">{count} cleanup action(s) applied to the source dataset</div>',
+                    unsafe_allow_html=True,
+                )
+            with header_cols[1]:
+                st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+                if st.button(
+                    "↶ Undo last fix",
+                    disabled=not undo_available or not has_permission("remediate"),
+                    use_container_width=True,
+                    key="undo_last_fix_btn",
+                    help="Reverts the most recent remediation step and restores the previous source dataset.",
+                ):
+                    _undo_last_fix()
+
             st.dataframe(pd.DataFrame(st.session_state.last_cleaning_actions), use_container_width=True, hide_index=True)
 
     # ─────────────────────────────────────────────────────────────

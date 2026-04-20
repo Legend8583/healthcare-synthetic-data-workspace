@@ -531,10 +531,11 @@ def inject_styles() -> None:
                 --brand: #0b5ea8;
                 --brand-deep: #08467d;
                 --accent: #19cbc5;
-                --bg: #f4f8fb;
+                --bg: #F3F7FB;
                 --surface: #ffffff;
-                --surface-soft: #f8fbfd;
-                --line: #d6e2ec;
+                --surface-soft: #ffffff;
+                --line: #D9E3EF;
+                --line-soft: #E5EDF5;
                 --text: #17324d;
                 --muted: #668097;
                 --warn: #9c6a17;
@@ -543,7 +544,8 @@ def inject_styles() -> None:
                 --danger-bg: #fff1f3;
                 --good: #136b48;
                 --good-bg: #edf9f3;
-                --shadow: 0 10px 24px rgba(8, 70, 125, 0.08);
+                --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+                --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.03);
             }
 
             html {
@@ -557,10 +559,7 @@ def inject_styles() -> None:
             }
 
             [data-testid="stAppViewContainer"] {
-                background:
-                    radial-gradient(circle at top left, rgba(11, 94, 168, 0.07), transparent 22%),
-                    radial-gradient(circle at top right, rgba(25, 203, 197, 0.08), transparent 16%),
-                    linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
+                background: var(--bg);
             }
 
             [data-testid="stHeader"],
@@ -4088,21 +4087,21 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         status_chip_color = "#9C6A17"; status_chip_bg = "#FFF6E3"
 
     # ─────────────────────────────────────────────────────────────
-    # A. STATUS STRIP — matches section-shell styling (white bg, --line border, --text color, --brand kickers)
+    # A. STATUS STRIP — primary container (white, clear border, subtle shadow)
     # ─────────────────────────────────────────────────────────────
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #d6e2ec;border-radius:20px;box-shadow:0 10px 24px rgba(8,70,125,0.08);margin-bottom:1rem;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:1.2rem;padding:0.8rem 1.15rem;background:#ffffff;border:1px solid #D9E3EF;border-radius:20px;box-shadow:0 1px 2px rgba(15,23,42,0.04);margin-bottom:1rem;flex-wrap:wrap;">
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Request</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;font-family:ui-monospace,monospace;">{active_request}</span>
             </div>
-            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="width:1px;height:18px;background:#D9E3EF;"></div>
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Role</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;">{st.session_state.current_role}</span>
             </div>
-            <div style="width:1px;height:18px;background:#d6e2ec;"></div>
+            <div style="width:1px;height:18px;background:#D9E3EF;"></div>
             <div style="display:flex;align-items:baseline;gap:0.45rem;">
                 <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;color:#0b5ea8;font-weight:700;">Step</span>
                 <span style="font-size:0.9rem;color:#17324d;font-weight:600;">1 of {len(STEP_CONFIG)}</span>
@@ -4305,7 +4304,7 @@ def render_step_one(metadata: list[dict[str, Any]]) -> None:
         def _stat_capsule(kicker: str, value: str, detail: str, accent: str = "#0b5ea8", bg: str = "#ffffff") -> str:
             return (
                 f'<div style="flex:1;min-width:140px;padding:0.85rem 1rem;background:{bg};'
-                f'border:1px solid #d6e2ec;border-radius:12px;">'
+                f'border:1px solid #E5EDF5;border-radius:12px;">'
                 f'<div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:{accent};margin-bottom:0.25rem;">{kicker}</div>'
                 f'<div style="font-size:1.4rem;font-weight:700;color:#17324d;line-height:1.15;">{value}</div>'
                 f'<div style="font-size:0.76rem;color:#668097;margin-top:0.2rem;line-height:1.35;">{detail}</div>'
